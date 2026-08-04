@@ -89,6 +89,10 @@ Consulte os arquivos `.env.example`. O `JWT_SECRET` será obrigatório quando a 
 - Fase 3: autenticação e autorização
 - Fases seguintes: catálogo, disponibilidade, agendamentos e painéis por perfil
 
+## Banco de dados
+
+As migrations, seed e criação segura do primeiro administrador estão documentados em `backend/src/database/README.md`. O runner nunca cria ou apaga automaticamente o banco configurado.
+
 ## Arquitetura inicial
 
 O navegador acessa a SPA React, que futuramente consumirá `/api` com Axios. A API aplica cabeçalhos seguros, CORS e parsing limitado antes de encaminhar requisições às rotas. Erros passam por um middleware único. O pool MySQL é compartilhado e usa conexões assíncronas; repositories e regras de negócio serão introduzidos quando houver domínio persistido.

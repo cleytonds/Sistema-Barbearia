@@ -1,0 +1,20 @@
+CREATE TABLE horarios_trabalho (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  barbeiro_id BIGINT UNSIGNED NOT NULL,
+  dia_semana TINYINT UNSIGNED NOT NULL,
+  hora_inicio TIME NOT NULL,
+  hora_fim TIME NOT NULL,
+  intervalo_inicio TIME NULL,
+  intervalo_fim TIME NULL,
+  ativo BOOLEAN NOT NULL DEFAULT TRUE,
+  criado_em DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  atualizado_em DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (id),
+  CONSTRAINT uq_horarios_trabalho_barbeiro_dia UNIQUE (barbeiro_id, dia_semana),
+  CONSTRAINT chk_ht_dia CHECK (dia_semana BETWEEN 0 AND 6),
+  CONSTRAINT chk_ht_jornada CHECK (hora_fim > hora_inicio),
+  CONSTRAINT chk_ht_intervalo_par CHECK ((intervalo_inicio IS NULL AND intervalo_fim IS NULL) OR (intervalo_inicio IS NOT NULL AND intervalo_fim IS NOT NULL)),
+  CONSTRAINT chk_ht_intervalo_ordem CHECK (intervalo_inicio IS NULL OR intervalo_fim > intervalo_inicio),
+  CONSTRAINT chk_ht_intervalo_jornada CHECK (intervalo_inicio IS NULL OR (intervalo_inicio >= hora_inicio AND intervalo_fim <= hora_fim)),
+  CONSTRAINT fk_horarios_trabalho_barbeiro FOREIGN KEY (barbeiro_id) REFERENCES barbeiros (id) ON UPDATE RESTRICT ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

@@ -1,0 +1,14 @@
+CREATE TABLE servicos (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  nome VARCHAR(120) NOT NULL,
+  descricao TEXT NULL,
+  preco DECIMAL(10,2) NOT NULL,
+  duracao_minutos SMALLINT UNSIGNED NOT NULL,
+  ativo BOOLEAN NOT NULL DEFAULT TRUE,
+  criado_em DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  atualizado_em DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (id),
+  CONSTRAINT chk_servicos_preco CHECK (preco >= 0),
+  CONSTRAINT chk_servicos_duracao CHECK (duracao_minutos > 0),
+  INDEX idx_servicos_ativo (ativo)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

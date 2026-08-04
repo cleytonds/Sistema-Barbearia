@@ -1,0 +1,14 @@
+CREATE TABLE barbeiros (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  usuario_id BIGINT UNSIGNED NOT NULL,
+  descricao TEXT NULL,
+  foto_url VARCHAR(500) NULL,
+  especialidades VARCHAR(500) NULL,
+  ativo BOOLEAN NOT NULL DEFAULT TRUE,
+  criado_em DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  atualizado_em DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (id),
+  CONSTRAINT uq_barbeiros_usuario UNIQUE (usuario_id),
+  INDEX idx_barbeiros_ativo (ativo),
+  CONSTRAINT fk_barbeiros_usuario FOREIGN KEY (usuario_id) REFERENCES usuarios (id) ON UPDATE RESTRICT ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

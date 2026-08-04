@@ -1,0 +1,20 @@
+CREATE TABLE historico_agendamentos (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  agendamento_id BIGINT UNSIGNED NOT NULL,
+  tipo_evento VARCHAR(30) NOT NULL,
+  status_anterior VARCHAR(30) NULL,
+  status_novo VARCHAR(30) NULL,
+  alterado_por BIGINT UNSIGNED NOT NULL,
+  observacao VARCHAR(1000) NULL,
+  dados_anteriores JSON NULL,
+  dados_novos JSON NULL,
+  criado_em DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (id),
+  CONSTRAINT chk_historico_tipo CHECK (tipo_evento IN ('criado', 'confirmado', 'status_alterado', 'reagendado', 'cancelado', 'concluido', 'ausente', 'observacao_alterada')),
+  CONSTRAINT chk_historico_status_anterior CHECK (status_anterior IS NULL OR status_anterior IN ('pendente', 'confirmado', 'em_atendimento', 'concluido', 'cancelado', 'ausente')),
+  CONSTRAINT chk_historico_status_novo CHECK (status_novo IS NULL OR status_novo IN ('pendente', 'confirmado', 'em_atendimento', 'concluido', 'cancelado', 'ausente')),
+  INDEX idx_historico_agendamento_data (agendamento_id, criado_em),
+  INDEX idx_historico_autor_data (alterado_por, criado_em),
+  CONSTRAINT fk_historico_agendamento FOREIGN KEY (agendamento_id) REFERENCES agendamentos (id) ON UPDATE RESTRICT ON DELETE RESTRICT,
+  CONSTRAINT fk_historico_autor FOREIGN KEY (alterado_por) REFERENCES usuarios (id) ON UPDATE RESTRICT ON DELETE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

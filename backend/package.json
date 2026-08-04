@@ -7,9 +7,14 @@
   "scripts": {
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
-    "test": "node --test"
+    "test": "node --test",
+    "migrate": "node src/database/migrate.js up",
+    "migrate:status": "node src/database/migrate.js status",
+    "seed": "node src/database/seeds/run.js",
+    "admin:create": "node src/database/scripts/createAdmin.js"
   },
   "dependencies": {
+    "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
     "dotenv": "^17.2.1",
     "express": "^5.1.0",
@@ -18,4 +23,3 @@
     "mysql2": "^3.14.3"
   }
 }
-

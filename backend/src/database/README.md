@@ -13,7 +13,7 @@ npm.cmd run migrate:status --prefix backend
 npm.cmd run seed --prefix backend
 ```
 
-Cada migration contém um único DDL e possui checksum. Migrations aplicadas ficam em `schema_migrations`, não são repetidas e não devem ser editadas. O runner usa `GET_LOCK` para impedir duas execuções simultâneas e encerra imediatamente na primeira falha.
+Cada migration possui checksum. Normalmente há um único DDL; quando uma evolução inseparável exige mais de um, os comandos são separados pelo marcador `-- statement-breakpoint` e executados em ordem. Migrations aplicadas ficam em `schema_migrations`, não são repetidas e não devem ser editadas. O runner usa `GET_LOCK` para impedir duas execuções simultâneas e encerra imediatamente na primeira falha.
 
 MySQL realiza commit implícito para DDL. Em MySQL 8, cada `CREATE TABLE` usado aqui é atômico, mas existe uma pequena janela entre o DDL e o registro em `schema_migrations`. Se o processo for encerrado exatamente nessa janela, não altere o schema manualmente: inspecione a tabela criada e repare o registro de controle conscientemente antes de repetir.
 
@@ -35,4 +35,3 @@ Remove-Item Env:ADMIN_PASSWORD
 ```
 
 A senha e o hash nunca são exibidos. Remova também as demais variáveis da sessão quando terminar.
-

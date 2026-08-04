@@ -9,14 +9,15 @@ const migrationDirectory = path.join(backendRoot, 'src', 'database', 'migrations
 
 test('migrations possuem ordem, nome único e um CREATE TABLE cada', async () => {
   const files = (await readdir(migrationDirectory)).filter((file) => file.endsWith('.sql')).sort();
-  assert.equal(files.length, 11);
+  assert.equal(files.length, 12);
   assert.equal(new Set(files).size, files.length);
   assert.deepEqual(files.map((file) => file.slice(0, 3)), files.map((_, index) => String(index + 1).padStart(3, '0')));
 
   for (const file of files) {
     const sql = await readFile(path.join(migrationDirectory, file), 'utf8');
-    assert.equal((sql.match(/CREATE TABLE/gi) ?? []).length, 1, file);
-    assert.match(sql, /ENGINE=InnoDB/i, file);
+    const structuralStatements = (sql.match(/CREATE TABLE|ALTER TABLE/gi) ?? []).length;
+    assert.ok(structuralStatements >= 1, file);
+    if (/CREATE TABLE/i.test(sql)) assert.match(sql, /ENGINE=InnoDB/i, file);
   }
 });
 
@@ -30,4 +31,3 @@ test('schema contém todas as tabelas de domínio aprovadas', async () => {
   assert.match(schema, /FOREIGN KEY/);
   assert.match(schema, /CHECK \(/);
 });
-

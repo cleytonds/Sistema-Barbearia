@@ -93,6 +93,12 @@ Consulte os arquivos `.env.example`. O `JWT_SECRET` será obrigatório quando a 
 
 As migrations, seed e criação segura do primeiro administrador estão documentados em `backend/src/database/README.md`. O runner nunca cria ou apaga automaticamente o banco configurado.
 
+## Autenticação
+
+A API possui cadastro de clientes, login, consulta da sessão, logout com revogação, alteração e recuperação de senha. JWTs usam HS256, expiração curta, `issuer`, `audience`, versão de autenticação e `jti`. O middleware sempre consulta o usuário ativo no banco.
+
+Antes de iniciar a API, configure um `JWT_SECRET` aleatório com no mínimo 32 caracteres e use `JWT_EXPIRES_IN=15m`. Não reutilize o placeholder do `.env.example` e nunca versione o `.env`.
+
 ## Arquitetura inicial
 
 O navegador acessa a SPA React, que futuramente consumirá `/api` com Axios. A API aplica cabeçalhos seguros, CORS e parsing limitado antes de encaminhar requisições às rotas. Erros passam por um middleware único. O pool MySQL é compartilhado e usa conexões assíncronas; repositories e regras de negócio serão introduzidos quando houver domínio persistido.

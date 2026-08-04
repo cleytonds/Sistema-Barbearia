@@ -48,8 +48,9 @@ async function status(connection, files, applied) {
 
 async function up(connection, files, applied) {
   for (const file of files) {
-    const sql = (await readFile(path.join(directory, file), 'utf8')).trim().replace(/;\s*$/, '');
-    const checksum = createHash('sha256').update(sql).digest('hex');
+    const sql = (await readFile(path.join(directory, file), 'utf8')).trim();
+    const checksumSource = sql.replace(/;\s*$/, '');
+    const checksum = createHash('sha256').update(checksumSource).digest('hex');
     const previous = applied.get(file);
 
     if (previous) {
@@ -60,8 +61,8 @@ async function up(connection, files, applied) {
 
     console.log(`aplicando ${file}`);
     try {
-      // Cada arquivo contém um único DDL. No MySQL 8, esse DDL é atômico.
-      await connection.query(sql);
+      const statements = sql.split(/^\s*-- statement-breakpoint\s*$/m).map((item) => item.trim().replace(/;\s*$/, '')).filter(Boolean);
+      for (const statement of statements) await connection.query(statement);
       await connection.execute('INSERT INTO schema_migrations (nome, checksum) VALUES (?, ?)', [file, checksum]);
       console.log(`concluída ${file}`);
     } catch (error) {
@@ -95,4 +96,3 @@ main().catch((error) => {
   console.error(`[migrations] ${error.message}`);
   process.exitCode = 1;
 });
-

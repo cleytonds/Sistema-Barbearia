@@ -1,4 +1,5 @@
-import { body, param } from 'express-validator';
+import { body, param, query } from 'express-validator';
+import { MAX_PAGE_SIZE } from '../utils/pagination.js';
 
 import { isMoney } from '../utils/decimal.js';
 
@@ -24,4 +25,12 @@ export const serviceValidator = [
 export const statusValidator = [
   body().custom((payload) => Object.keys(payload).every((field) => field === 'ativo')),
   body('ativo').isBoolean(),
+];
+export const adminServiceListValidator = [
+  query('page').optional().isInt({ min: 1 }),
+  query('limit').optional().isInt({ min: 1, max: MAX_PAGE_SIZE }),
+  query('search').optional().isString().trim().isLength({ max: 120 }),
+  query('ativo').optional().isIn(['true', 'false', 'all']),
+  query('sort').optional().isIn(['id', 'nome', 'preco', 'duracao_minutos', 'criado_em']),
+  query('order').optional().isIn(['asc', 'desc']),
 ];

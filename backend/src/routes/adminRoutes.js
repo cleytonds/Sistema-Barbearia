@@ -7,18 +7,30 @@ import { validate } from '../middlewares/validate.js';
 import * as barbeiroController from '../controllers/barbeiroController.js';
 import * as operacionalController from '../controllers/operacionalController.js';
 import * as servicoController from '../controllers/servicoController.js';
+import * as dashboardController from '../controllers/dashboardController.js';
+import * as clienteAdminController from '../controllers/clienteAdminController.js';
 
 import {
   createBarberValidator,
+  adminBarberListValidator,
   syncServicesValidator,
   updateBarberValidator,
 } from '../validators/barbeiroValidators.js';
 import {
+  blockListValidator,
   blockValidator,
+  clientHistoryValidator,
+  clientListValidator,
   configValidator,
+  dashboardValidator,
   weekValidator,
 } from '../validators/operacionalValidators.js';
-import { idValidator, serviceValidator, statusValidator } from '../validators/servicoValidators.js';
+import {
+  adminServiceListValidator,
+  idValidator,
+  serviceValidator,
+  statusValidator,
+} from '../validators/servicoValidators.js';
 
 import { asyncHandler } from '../utils/asyncHandler.js';
 
@@ -28,7 +40,30 @@ export const adminRoutes = Router();
 adminRoutes.use(auth(), requireAdmin());
 
 // Serviços
-adminRoutes.get('/servicos', asyncHandler(servicoController.listAdmin));
+adminRoutes.get(
+  '/dashboard',
+  dashboardValidator,
+  validate,
+  asyncHandler(dashboardController.admin),
+);
+adminRoutes.get(
+  '/clientes',
+  clientListValidator,
+  validate,
+  asyncHandler(clienteAdminController.list),
+);
+adminRoutes.get(
+  '/clientes/:id/agendamentos',
+  clientHistoryValidator,
+  validate,
+  asyncHandler(clienteAdminController.history),
+);
+adminRoutes.get(
+  '/servicos',
+  adminServiceListValidator,
+  validate,
+  asyncHandler(servicoController.listAdmin),
+);
 adminRoutes.post('/servicos', serviceValidator, validate, asyncHandler(servicoController.create));
 adminRoutes.get('/servicos/:id', idValidator, validate, asyncHandler(servicoController.getAdmin));
 adminRoutes.put(
@@ -47,7 +82,12 @@ adminRoutes.patch(
 );
 
 // Barbeiros
-adminRoutes.get('/barbeiros', asyncHandler(barbeiroController.listAdmin));
+adminRoutes.get(
+  '/barbeiros',
+  adminBarberListValidator,
+  validate,
+  asyncHandler(barbeiroController.listAdmin),
+);
 adminRoutes.post(
   '/barbeiros',
   createBarberValidator,
@@ -117,7 +157,12 @@ adminRoutes.put(
 );
 
 // Bloqueios de agenda
-adminRoutes.get('/bloqueios', asyncHandler(operacionalController.adminBlocks));
+adminRoutes.get(
+  '/bloqueios',
+  blockListValidator,
+  validate,
+  asyncHandler(operacionalController.adminBlocks),
+);
 adminRoutes.post(
   '/bloqueios',
   blockValidator,

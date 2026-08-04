@@ -1,5 +1,7 @@
-import { body } from 'express-validator';
+import { body, param, query } from 'express-validator';
 import { isValidTimeZone } from '../utils/dateTime.js';
+import { APPOINTMENT_STATUS } from '../domain/appointments/constants.js';
+import { MAX_PAGE_SIZE } from '../utils/pagination.js';
 const time = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
 export const weekValidator = [
   body('dias')
@@ -71,4 +73,28 @@ export const myBlockValidator = [
     .custom((value) => value == null),
   body('justificativaPassado').not().exists(),
   ...fields,
+];
+const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+export const dashboardValidator = [query('data').matches(datePattern)];
+export const blockListValidator = [
+  query('dataInicial').optional().matches(datePattern),
+  query('dataFinal').optional().matches(datePattern),
+  query('page').optional().isInt({ min: 1 }),
+  query('limit').optional().isInt({ min: 1, max: MAX_PAGE_SIZE }),
+  query('order').optional().isIn(['asc', 'desc']),
+];
+export const clientListValidator = [
+  query('search').isString().trim().isLength({ min: 2, max: 150 }),
+  query('page').optional().isInt({ min: 1 }),
+  query('limit').optional().isInt({ min: 1, max: MAX_PAGE_SIZE }),
+];
+export const clientHistoryValidator = [
+  param('id').isInt({ min: 1 }),
+  query('status').optional().isIn(Object.values(APPOINTMENT_STATUS)),
+  query('dataInicial').optional().matches(datePattern),
+  query('dataFinal').optional().matches(datePattern),
+  query('page').optional().isInt({ min: 1 }),
+  query('limit').optional().isInt({ min: 1, max: MAX_PAGE_SIZE }),
+  query('sort').optional().isIn(['inicio', 'criadoEm', 'status']),
+  query('order').optional().isIn(['asc', 'desc']),
 ];

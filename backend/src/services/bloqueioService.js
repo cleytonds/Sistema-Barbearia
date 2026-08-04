@@ -3,13 +3,39 @@ import * as barbeiroRepository from '../repositories/barbeiroRepository.js';
 import * as operacionalRepository from '../repositories/operacionalRepository.js';
 import { AppError } from '../utils/AppError.js';
 import { localToUtc } from '../utils/dateTime.js';
+import { DateTime } from 'luxon';
+import { paginationResult, parsePagination } from '../utils/pagination.js';
 
-export const listAdmin = () => operacionalRepository.blocks({ all: true });
+function blockFilters(query, timeZone) {
+  const pagination = parsePagination(query, { inicio: 'inicio_em' }, 'inicio');
+  return {
+    startAt: query.dataInicial
+      ? DateTime.fromISO(query.dataInicial, { zone: timeZone }).startOf('day').toUTC().toJSDate()
+      : null,
+    endAt: query.dataFinal
+      ? DateTime.fromISO(query.dataFinal, { zone: timeZone })
+          .plus({ days: 1 })
+          .startOf('day')
+          .toUTC()
+          .toJSDate()
+      : null,
+    pagination,
+  };
+}
+export async function listAdmin(query = {}) {
+  const configuration = await operacionalRepository.config();
+  const filters = blockFilters(query, configuration.fuso_horario);
+  const result = await operacionalRepository.blocks({ all: true, ...filters });
+  return paginationResult(result.rows, result.total, filters.pagination);
+}
 
-export async function listMine(usuarioId) {
+export async function listMine(usuarioId, query = {}) {
   const barber = await barbeiroRepository.findBarberByUser(usuarioId);
   if (!barber) throw new AppError('Barbeiro não encontrado.', 404, 'BARBER_NOT_FOUND');
-  return operacionalRepository.blocks({ barberId: barber.id });
+  const configuration = await operacionalRepository.config();
+  const filters = blockFilters(query, configuration.fuso_horario);
+  const result = await operacionalRepository.blocks({ barberId: barber.id, ...filters });
+  return paginationResult(result.rows, result.total, filters.pagination);
 }
 
 /**

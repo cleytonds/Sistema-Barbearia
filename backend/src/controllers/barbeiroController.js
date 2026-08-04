@@ -40,6 +40,9 @@ export const syncServices = async (request, response) =>
 export const me = async (request, response) =>
   response.json({ data: await barbeiroService.me(request.auth.usuario.id) });
 
+export const updateMe = async (request, response) =>
+  response.json({ data: await barbeiroService.updateMe(request.auth.usuario.id, request.body) });
+
 export const myServices = async (request, response) => {
   const barber = await barbeiroService.me(request.auth.usuario.id);
   response.json({ data: await barbeiroService.services(barber.id) });

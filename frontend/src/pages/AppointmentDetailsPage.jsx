@@ -6,10 +6,12 @@ import {
   CancelAppointmentDialog,
   RescheduleAppointmentDialog,
 } from '../components/appointments/AppointmentDialogs.jsx';
+import { WhatsAppShareButton } from '../components/appointments/WhatsAppShareButton.jsx';
 import { Alert, Button, Card, Skeleton } from '../components/ui/index.jsx';
 import { useAppointmentDetails } from '../hooks/useAppointmentDetails.js';
 import { useDocumentTitle } from '../hooks/useDocumentTitle.js';
 import { formatDate, formatMoney } from '../utils/dateTime.js';
+import { hasWhatsAppShareData } from '../utils/whatsappShare.js';
 import { useToast } from '../contexts/ToastContext.jsx';
 export default function AppointmentDetailsPage() {
   useDocumentTitle('Detalhe do agendamento');
@@ -51,6 +53,7 @@ export default function AppointmentDetailsPage() {
                 <strong>Observações:</strong> {data.observacoes}
               </p>
             )}
+            {hasWhatsAppShareData(data) && <WhatsAppShareButton agendamento={data} />}
             <div className="cluster">
               {data.podeCancelar && (
                 <Button variant="danger" onClick={() => setMode('cancel')}>

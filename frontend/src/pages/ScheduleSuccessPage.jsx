@@ -3,9 +3,11 @@ import { Container } from '../components/layout/index.jsx';
 import { BrandMark } from '../components/brand/BrandMark.jsx';
 import { Alert, Card, Skeleton } from '../components/ui/index.jsx';
 import { AppointmentStatusBadge } from '../components/appointments/index.jsx';
+import { WhatsAppShareButton } from '../components/appointments/WhatsAppShareButton.jsx';
 import { useAppointmentDetails } from '../hooks/useAppointmentDetails.js';
 import { useDocumentTitle } from '../hooks/useDocumentTitle.js';
 import { formatDate, formatMoney } from '../utils/dateTime.js';
+import { hasWhatsAppShareData } from '../utils/whatsappShare.js';
 export default function ScheduleSuccessPage() {
   useDocumentTitle('Agendamento confirmado');
   const { id } = useParams();
@@ -31,6 +33,12 @@ export default function ScheduleSuccessPage() {
             {formatDate(data.data)} · {data.horaInicio}–{data.horaFim}
           </p>
           <p>{formatMoney(data.preco)}</p>
+          {hasWhatsAppShareData(data) && (
+            <>
+              <p>Compartilhe os dados do seu horário pelo WhatsApp.</p>
+              <WhatsAppShareButton agendamento={data} />
+            </>
+          )}
         </Card>
       )}
       <div className="cluster">

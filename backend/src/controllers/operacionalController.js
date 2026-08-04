@@ -22,8 +22,8 @@ export const updateBarberHours = async (request, response) =>
   });
 export const myHours = async (request, response) =>
   response.json({ data: await horarioService.myHours(request.auth.usuario.id) });
-export const adminBlocks = async (_request, response) =>
-  response.json({ data: await bloqueioService.listAdmin() });
+export const adminBlocks = async (request, response) =>
+  response.json(await bloqueioService.listAdmin(request.query));
 export const createAdminBlock = async (request, response) =>
   response
     .status(201)
@@ -33,7 +33,7 @@ export const removeAdminBlock = async (request, response) => {
   response.status(204).end();
 };
 export const myBlocks = async (request, response) =>
-  response.json({ data: await bloqueioService.listMine(request.auth.usuario.id) });
+  response.json(await bloqueioService.listMine(request.auth.usuario.id, request.query));
 export const createMyBlock = async (request, response) =>
   response
     .status(201)

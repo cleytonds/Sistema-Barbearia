@@ -6,8 +6,14 @@ import { validate } from '../middlewares/validate.js';
 
 import * as barbeiroController from '../controllers/barbeiroController.js';
 import * as operacionalController from '../controllers/operacionalController.js';
+import * as dashboardController from '../controllers/dashboardController.js';
 
-import { myBlockValidator } from '../validators/operacionalValidators.js';
+import {
+  blockListValidator,
+  dashboardValidator,
+  myBlockValidator,
+} from '../validators/operacionalValidators.js';
+import { updateOwnBarberValidator } from '../validators/barbeiroValidators.js';
 import { idValidator } from '../validators/servicoValidators.js';
 
 import { asyncHandler } from '../utils/asyncHandler.js';
@@ -18,6 +24,18 @@ barbeiroAreaRoutes.use(auth(), requireBarbeiro());
 
 // Perfil profissional
 barbeiroAreaRoutes.get('/me', asyncHandler(barbeiroController.me));
+barbeiroAreaRoutes.put(
+  '/me',
+  updateOwnBarberValidator,
+  validate,
+  asyncHandler(barbeiroController.updateMe),
+);
+barbeiroAreaRoutes.get(
+  '/dashboard',
+  dashboardValidator,
+  validate,
+  asyncHandler(dashboardController.barber),
+);
 
 // Serviços executados
 barbeiroAreaRoutes.get('/me/servicos', asyncHandler(barbeiroController.myServices));
@@ -26,7 +44,12 @@ barbeiroAreaRoutes.get('/me/servicos', asyncHandler(barbeiroController.myService
 barbeiroAreaRoutes.get('/me/horarios', asyncHandler(operacionalController.myHours));
 
 // Bloqueios da própria agenda
-barbeiroAreaRoutes.get('/me/bloqueios', asyncHandler(operacionalController.myBlocks));
+barbeiroAreaRoutes.get(
+  '/me/bloqueios',
+  blockListValidator,
+  validate,
+  asyncHandler(operacionalController.myBlocks),
+);
 barbeiroAreaRoutes.post(
   '/me/bloqueios',
   myBlockValidator,

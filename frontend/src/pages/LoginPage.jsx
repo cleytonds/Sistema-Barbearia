@@ -6,6 +6,7 @@ import { BrandMark } from '../components/brand/BrandMark.jsx';
 import { useAuth } from '../hooks/useAuth.js';
 import { useDocumentTitle } from '../hooks/useDocumentTitle.js';
 import { useToast } from '../contexts/ToastContext.jsx';
+import { homeByRole, safeInternalPath } from '../routes/routeSecurity.js';
 export default function LoginPage() {
   useDocumentTitle('Entrar');
   const { login } = useAuth();
@@ -20,10 +21,10 @@ export default function LoginPage() {
     setLoading(true);
     setError(null);
     try {
-      await login(form.email.trim(), form.senha);
+      const usuario = await login(form.email.trim(), form.senha);
       notify('Login efetuado.', 'success');
-      const from = location.state?.from?.pathname;
-      navigate(from?.startsWith('/') && !from.startsWith('//') ? from : '/meus-agendamentos', {
+      const from = safeInternalPath(location.state?.from?.pathname);
+      navigate(usuario.perfil === 'cliente' && from ? from : homeByRole(usuario.perfil), {
         replace: true,
       });
     } catch {

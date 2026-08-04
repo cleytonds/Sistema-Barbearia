@@ -61,6 +61,20 @@ export async function me(usuarioId) {
   return barber;
 }
 
+export async function updateMe(usuarioId, data) {
+  const barber = await me(usuarioId);
+  await pool.execute(
+    'UPDATE barbeiros SET descricao = ?, especialidades = ?, foto_url = ? WHERE id = ?',
+    [
+      data.descricao?.trim() || null,
+      data.especialidades?.trim() || null,
+      data.foto_url || null,
+      barber.id,
+    ],
+  );
+  return me(usuarioId);
+}
+
 /**
  * Cria o usuário e o perfil profissional do barbeiro na mesma transação.
  * Uma falha na segunda inserção desfaz o usuário, evitando contas órfãs.

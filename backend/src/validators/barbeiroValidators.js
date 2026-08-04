@@ -60,6 +60,20 @@ export const updateBarberValidator = [
   allow(['nome', 'email', 'telefone', 'descricao', 'foto_url', 'especialidades']),
   ...base,
 ];
+export const updateOwnBarberValidator = [
+  allow(['descricao', 'foto_url', 'especialidades']),
+  body('descricao').optional({ nullable: true }).isString().trim().isLength({ max: 2000 }),
+  body('especialidades').optional({ nullable: true }).isString().trim().isLength({ max: 500 }),
+  photoUrl,
+];
+export const adminBarberListValidator = [
+  query('page').optional().isInt({ min: 1 }),
+  query('limit').optional().isInt({ min: 1, max: MAX_PAGE_SIZE }),
+  query('search').optional().isString().trim().isLength({ max: 150 }),
+  query('ativo').optional().isIn(['true', 'false', 'all']),
+  query('sort').optional().isIn(['id', 'nome', 'criado_em']),
+  query('order').optional().isIn(['asc', 'desc']),
+];
 export const syncServicesValidator = [
   body('servicoIds')
     .isArray({ max: 100 })

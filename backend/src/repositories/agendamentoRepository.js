@@ -161,3 +161,49 @@ export async function findSettings(connection = pool) {
   );
   return row ?? null;
 }
+
+export async function dashboardSummary({ barberId = null, startAt, endAt }, connection = pool) {
+  const barberClause = barberId == null ? '' : 'AND a.barbeiro_id = ?';
+  const parameters = barberId == null ? [startAt, endAt] : [startAt, endAt, barberId];
+  const [[totals]] = await connection.execute(
+    `SELECT COUNT(*) total,
+      SUM(a.status='pendente') pendentes,
+      SUM(a.status='confirmado') confirmados,
+      SUM(a.status='em_atendimento') em_atendimento,
+      SUM(a.status='concluido') concluidos,
+      SUM(a.status='cancelado') cancelados,
+      SUM(a.status='ausente') ausentes
+     FROM agendamentos a
+     WHERE a.inicio_em >= ? AND a.inicio_em < ? ${barberClause}`,
+    parameters,
+  );
+  const nextParameters = barberId == null ? [startAt, endAt] : [startAt, endAt, barberId];
+  const [[next]] = await connection.execute(
+    `${detailSelect}
+     WHERE a.inicio_em >= ? AND a.inicio_em < ? ${barberClause}
+       AND a.status IN ('pendente','confirmado','em_atendimento')
+     ORDER BY a.inicio_em ASC LIMIT 1`,
+    nextParameters,
+  );
+  return { totals, next: next ?? null };
+}
+
+export async function dashboardByBarber({ startAt, endAt }, connection = pool) {
+  const [rows] = await connection.execute(
+    `SELECT b.id barbeiro_id, u.nome,
+            COUNT(a.id) total,
+            SUM(a.status='pendente') pendentes,
+            SUM(a.status='confirmado') confirmados,
+            SUM(a.status='em_atendimento') em_atendimento,
+            SUM(a.status='concluido') concluidos,
+            SUM(a.status='cancelado') cancelados,
+            SUM(a.status='ausente') ausentes
+     FROM barbeiros b
+     JOIN usuarios u ON u.id=b.usuario_id
+     LEFT JOIN agendamentos a ON a.barbeiro_id=b.id AND a.inicio_em>=? AND a.inicio_em<?
+     WHERE b.ativo=TRUE AND u.ativo=TRUE
+     GROUP BY b.id,u.nome ORDER BY u.nome`,
+    [startAt, endAt],
+  );
+  return rows;
+}

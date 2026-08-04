@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
-    "test": "node --test",
+    "test": "node --test --test-concurrency=1",
     "migrate": "node src/database/migrate.js up",
     "migrate:status": "node src/database/migrate.js status",
     "seed": "node src/database/seeds/run.js",

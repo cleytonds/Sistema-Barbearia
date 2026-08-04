@@ -34,3 +34,11 @@ export const authenticatedLimiter = rateLimit({
   limit: 300,
   keyGenerator: userKey,
 });
+
+// O armazenamento padrão em memória atende uma instância. Uma implantação
+// horizontal deverá compartilhar os contadores por meio de Redis ou equivalente.
+export const availabilityLimiter = rateLimit({
+  ...base,
+  windowMs: 60_000,
+  limit: 60,
+});

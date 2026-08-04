@@ -5,6 +5,7 @@ import { barbeiroRoutes } from './barbeiroRoutes.js';
 import { configuracaoRoutes } from './configuracaoRoutes.js';
 import { adminRoutes } from './adminRoutes.js';
 import { barbeiroAreaRoutes } from './barbeiroAreaRoutes.js';
+import { disponibilidadeRoutes } from './disponibilidadeRoutes.js';
 
 export const router = Router();
 
@@ -18,3 +19,4 @@ router.use('/barbeiros', barbeiroRoutes);
 router.use('/configuracoes', configuracaoRoutes);
 router.use('/admin', adminRoutes);
 router.use('/barbeiro', barbeiroAreaRoutes);
+router.use('/disponibilidade', disponibilidadeRoutes);

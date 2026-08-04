@@ -103,6 +103,54 @@ Antes de iniciar a API, configure um `JWT_SECRET` aleatório com no mínimo 32 c
 
 Nomes de serviços são normalizados (`trim` e espaços consecutivos) antes da validação de unicidade. URLs de foto aceitam apenas HTTPS; `http://localhost` é permitido somente em desenvolvimento. Uma evolução futura poderá marcar a senha inicial do barbeiro como temporária e exigir troca no primeiro login; essa flag não faz parte da versão atual.
 
+## Disponibilidade da agenda
+
+A consulta pública usa somente `GET /api/disponibilidade`, com `barbeiroId`, `servicoId` e
+`data` civil no formato `YYYY-MM-DD`:
+
+```text
+Cliente
+  ↓
+disponibilidadeValidator
+  ↓
+disponibilidadeController
+  ↓
+disponibilidadeService
+  ↓
+disponibilidadeRepository
+  ↓
+domain/availability
+  ↓
+buildDailyAvailability
+  ↓
+generateCandidateSlots
+  ↓
+filterUnavailableSlots
+  ↓
+Resposta no horário local
+```
+
+Os instantes são convertidos para UTC internamente, mas a resposta pública contém somente o
+horário local do fuso configurado para a barbearia. Os candidatos começam em uma grade fixa de
+15 minutos e exigem antecedência mínima de 30 minutos. A duração exibida é a duração real do
+serviço; o intervalo técnico é acrescentado apenas ao período interno usado para conflitos.
+
+A consulta é informativa e não reserva um horário. A futura criação ou alteração de um
+agendamento deverá iniciar uma transação `READ COMMITTED`, bloquear a linha do barbeiro e
+repetir todas as validações antes da escrita. O teste de contenção atual comprova somente que
+validações transacionais do mesmo barbeiro são serializadas; a garantia contra dupla inserção
+pertence à Fase 6. Não existe reserva temporária de slot nesta versão.
+
+O buffer atual vem de `configuracoes.intervalo_entre_atendimentos_minutos`. Agendamentos
+existentes ainda não preservam o buffer vigente quando foram criados, portanto mudar a
+configuração pode alterar a interpretação histórica da ocupação. Antes da Fase 6 deverá ser
+reavaliada uma futura coluna `buffer_minutos`, criada por nova migration sem modificar as já
+aplicadas.
+
+A rota possui rate limit próprio de 60 requisições por minuto por IP e responde com
+`Cache-Control: no-store`. O contador em memória atende somente uma instância; implantação
+horizontal deverá usar Redis ou armazenamento compartilhado equivalente.
+
 ## Arquitetura inicial
 
 O navegador acessa a SPA React, que futuramente consumirá `/api` com Axios. A API aplica cabeçalhos seguros, CORS e parsing limitado antes de encaminhar requisições às rotas. Erros passam por um middleware único. O pool MySQL é compartilhado e usa conexões assíncronas; repositories e regras de negócio serão introduzidos quando houver domínio persistido.

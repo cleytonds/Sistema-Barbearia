@@ -99,6 +99,10 @@ A API possui cadastro de clientes, login, consulta da sessão, logout com revoga
 
 Antes de iniciar a API, configure um `JWT_SECRET` aleatório com no mínimo 32 caracteres e use `JWT_EXPIRES_IN=15m`. Não reutilize o placeholder do `.env.example` e nunca versione o `.env`.
 
+## Cadastros operacionais
+
+Nomes de serviços são normalizados (`trim` e espaços consecutivos) antes da validação de unicidade. URLs de foto aceitam apenas HTTPS; `http://localhost` é permitido somente em desenvolvimento. Uma evolução futura poderá marcar a senha inicial do barbeiro como temporária e exigir troca no primeiro login; essa flag não faz parte da versão atual.
+
 ## Arquitetura inicial
 
 O navegador acessa a SPA React, que futuramente consumirá `/api` com Axios. A API aplica cabeçalhos seguros, CORS e parsing limitado antes de encaminhar requisições às rotas. Erros passam por um middleware único. O pool MySQL é compartilhado e usa conexões assíncronas; repositories e regras de negócio serão introduzidos quando houver domínio persistido.

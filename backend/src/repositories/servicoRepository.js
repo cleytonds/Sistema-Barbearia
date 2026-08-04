@@ -1,0 +1,7 @@
+import { pool } from '../config/database.js';
+const cols='id,nome,descricao,preco,duracao_minutos,ativo,criado_em,atualizado_em';
+export async function listServices({publicOnly=false,search='',ativo,pagination},db=pool){const c=[],p=[];if(publicOnly)c.push('ativo=TRUE');else if(ativo!==undefined&&ativo!=='all'){c.push('ativo=?');p.push(ativo==='true');}if(search){c.push('nome LIKE ?');p.push(`%${search}%`);}const w=c.length?`WHERE ${c.join(' AND ')}`:'';const[[n]]=await db.execute(`SELECT COUNT(*) total FROM servicos ${w}`,p);const[r]=await db.execute(`SELECT ${cols} FROM servicos ${w} ORDER BY ${pagination.sortColumn} ${pagination.order} LIMIT ${pagination.limit} OFFSET ${pagination.offset}`,p);return{rows:r,total:n.total};}
+export async function findService(id,db=pool){const[[r]]=await db.execute(`SELECT ${cols} FROM servicos WHERE id=?`,[id]);return r??null;}
+export async function createService(d,db=pool){const[r]=await db.execute('INSERT INTO servicos(nome,descricao,preco,duracao_minutos) VALUES(?,?,?,?)',[d.nome,d.descricao,d.preco,d.duracao_minutos]);return findService(r.insertId,db);}
+export async function updateService(id,d,db=pool){await db.execute('UPDATE servicos SET nome=?,descricao=?,preco=?,duracao_minutos=? WHERE id=?',[d.nome,d.descricao,d.preco,d.duracao_minutos,id]);return findService(id,db);}
+export async function updateServiceStatus(id,ativo,db=pool){await db.execute('UPDATE servicos SET ativo=? WHERE id=?',[ativo,id]);return findService(id,db);}

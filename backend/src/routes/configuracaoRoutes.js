@@ -1,0 +1,1 @@
+import{Router}from'express';import*as c from'../controllers/operacionalController.js';import{asyncHandler}from'../utils/asyncHandler.js';export const configuracaoRoutes=Router();configuracaoRoutes.get('/publicas',asyncHandler(c.publicConfig));configuracaoRoutes.get('/horarios',asyncHandler(c.publicHours));

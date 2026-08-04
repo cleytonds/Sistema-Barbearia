@@ -21,6 +21,5 @@ export const authService = {
   },
   async changePassword(data) {
     return (await api.put('/auth/alterar-senha', data)).data;
-  }
+  },
 };
-

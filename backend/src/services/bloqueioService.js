@@ -1,27 +1,123 @@
 import { pool } from '../config/database.js';
-import * as op from '../repositories/operacionalRepository.js';
-import * as barbers from '../repositories/barbeiroRepository.js';
-import { localToUtc } from '../utils/dateTime.js';
+import * as barbeiroRepository from '../repositories/barbeiroRepository.js';
+import * as operacionalRepository from '../repositories/operacionalRepository.js';
 import { AppError } from '../utils/AppError.js';
+import { localToUtc } from '../utils/dateTime.js';
 
-export const listAdmin = () => op.blocks({ all: true });
-export async function listMine(userId) { const b = await barbers.findBarberByUser(userId); if (!b) throw new AppError('Barbeiro não encontrado.', 404, 'BARBER_NOT_FOUND'); return op.blocks({ barberId: b.id }); }
-async function create({ barberId, inicioLocal, fimLocal, motivo, allowPast = false, userId, global = false }) {
-  const cfg = await op.config(); const start = localToUtc(inicioLocal, cfg.fuso_horario); const end = localToUtc(fimLocal, cfg.fuso_horario);
-  if (end <= start) throw new AppError('Período inválido.', 422, 'VALIDATION_ERROR');
-  if (start < new Date() && !allowPast) throw new AppError('Bloqueio no passado não permitido.', 422, 'BUSINESS_RULE_VIOLATION');
-  const c = await pool.getConnection();
-  try {
-    await c.beginTransaction();
-    if (global) await c.query('SELECT id FROM barbeiros WHERE ativo=TRUE ORDER BY id FOR UPDATE');
-    else { const [[b]] = await c.execute('SELECT id FROM barbeiros WHERE id=? AND ativo=TRUE FOR UPDATE', [barberId]); if (!b) throw new AppError('Barbeiro não encontrado.', 404, 'BARBER_NOT_FOUND'); }
-    const params = global ? [end, start] : [barberId, end, start];
-    const [conflicts] = await c.execute(`SELECT id,inicio_em,fim_em FROM agendamentos WHERE ${global ? '' : 'barbeiro_id=? AND '}status IN ('pendente','confirmado','em_atendimento') AND inicio_em < ? AND fim_em > ?`, params);
-    if (conflicts.length) throw new AppError('Existem agendamentos conflitantes.', 409, 'SCHEDULE_CONFLICT', conflicts);
-    const [r] = await c.execute('INSERT INTO bloqueios_agenda(barbeiro_id,inicio_em,fim_em,motivo,criado_por)VALUES(?,?,?,?,?)', [global ? null : barberId, start, end, motivo.trim(), userId]);
-    await c.commit(); return { id: String(r.insertId), barbeiro_id: global ? null : String(barberId), inicio_em: start, fim_em: end, motivo };
-  } catch (e) { await c.rollback(); throw e; } finally { c.release(); }
+export const listAdmin = () => operacionalRepository.blocks({ all: true });
+
+export async function listMine(usuarioId) {
+  const barber = await barbeiroRepository.findBarberByUser(usuarioId);
+  if (!barber) throw new AppError('Barbeiro não encontrado.', 404, 'BARBER_NOT_FOUND');
+  return operacionalRepository.blocks({ barberId: barber.id });
 }
-export async function createAdmin(data, userId) { return data.barbeiroId == null ? create({ global: true, ...data, userId, allowPast: Boolean(data.justificativaPassado) }) : create({ ...data, barberId: data.barbeiroId, userId, allowPast: Boolean(data.justificativaPassado) }); }
-export async function createMine(data, userId) { const b = await barbers.findBarberByUser(userId); if (!b || !b.ativo) throw new AppError('Barbeiro não encontrado.', 404, 'BARBER_NOT_FOUND'); return create({ ...data, barberId: b.id, userId }); }
-export async function remove(id, userId, isAdmin) { const [[block]] = await pool.execute('SELECT * FROM bloqueios_agenda WHERE id=?', [id]); if (!block) throw new AppError('Bloqueio não encontrado.', 404, 'BLOCK_NOT_FOUND'); if (!isAdmin) { const own = await barbers.findBarberByUser(userId); if (!own || block.barbeiro_id !== own.id || block.criado_por !== userId) throw new AppError('Acesso não autorizado.', 403, 'FORBIDDEN'); } await pool.execute('DELETE FROM bloqueios_agenda WHERE id=?', [id]); }
+
+/**
+ * Cria um bloqueio depois de converter o horário local configurado para UTC.
+ *
+ * O lock específico serializa alterações da agenda do barbeiro. Bloqueios globais
+ * bloqueiam todos os barbeiros ativos em ordem crescente para reduzir risco de deadlock.
+ * A mesma transação verifica conflitos e insere o bloqueio, fechando a janela de corrida.
+ */
+async function createBlock({
+  barberId,
+  inicioLocal,
+  fimLocal,
+  motivo,
+  allowPast = false,
+  userId,
+  global = false,
+}) {
+  const configuration = await operacionalRepository.config();
+  const startAt = localToUtc(inicioLocal, configuration.fuso_horario);
+  const endAt = localToUtc(fimLocal, configuration.fuso_horario);
+
+  if (endAt <= startAt) throw new AppError('Período inválido.', 422, 'VALIDATION_ERROR');
+  if (startAt < new Date() && !allowPast) {
+    throw new AppError('Bloqueio no passado não permitido.', 422, 'BUSINESS_RULE_VIOLATION');
+  }
+
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    if (global) {
+      await connection.query('SELECT id FROM barbeiros WHERE ativo = TRUE ORDER BY id FOR UPDATE');
+    } else {
+      const [[barber]] = await connection.execute(
+        'SELECT id FROM barbeiros WHERE id=? AND ativo=TRUE FOR UPDATE',
+        [barberId],
+      );
+      if (!barber) throw new AppError('Barbeiro não encontrado.', 404, 'BARBER_NOT_FOUND');
+    }
+
+    const parameters = global ? [endAt, startAt] : [barberId, endAt, startAt];
+    const barberFilter = global ? '' : 'barbeiro_id = ? AND ';
+    const [conflicts] = await connection.execute(
+      `
+        SELECT id, inicio_em, fim_em
+        FROM agendamentos
+        WHERE ${barberFilter}
+          status IN ('pendente', 'confirmado', 'em_atendimento')
+          AND inicio_em < ?
+          AND fim_em > ?
+      `,
+      parameters,
+    );
+    if (conflicts.length) {
+      throw new AppError('Existem agendamentos conflitantes.', 409, 'SCHEDULE_CONFLICT', conflicts);
+    }
+
+    const [result] = await connection.execute(
+      `
+        INSERT INTO bloqueios_agenda
+          (barbeiro_id, inicio_em, fim_em, motivo, criado_por)
+        VALUES (?, ?, ?, ?, ?)
+      `,
+      [global ? null : barberId, startAt, endAt, motivo.trim(), userId],
+    );
+    await connection.commit();
+    return {
+      id: String(result.insertId),
+      barbeiro_id: global ? null : String(barberId),
+      inicio_em: startAt,
+      fim_em: endAt,
+      motivo,
+    };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+/** Cria um bloqueio específico ou global no contexto administrativo. */
+export async function createAdmin(data, usuarioId) {
+  const allowPast = Boolean(data.justificativaPassado);
+  return data.barbeiroId == null
+    ? createBlock({ global: true, ...data, userId: usuarioId, allowPast })
+    : createBlock({ ...data, barberId: data.barbeiroId, userId: usuarioId, allowPast });
+}
+
+/** Cria um bloqueio limitado ao perfil profissional autenticado. */
+export async function createMine(data, usuarioId) {
+  const barber = await barbeiroRepository.findBarberByUser(usuarioId);
+  if (!barber || !barber.ativo) {
+    throw new AppError('Barbeiro não encontrado.', 404, 'BARBER_NOT_FOUND');
+  }
+  return createBlock({ ...data, barberId: barber.id, userId: usuarioId });
+}
+
+/** Remove fisicamente o bloqueio, respeitando propriedade fora do contexto administrativo. */
+export async function remove(bloqueioId, usuarioId, isAdmin) {
+  const [[block]] = await pool.execute('SELECT * FROM bloqueios_agenda WHERE id = ?', [bloqueioId]);
+  if (!block) throw new AppError('Bloqueio não encontrado.', 404, 'BLOCK_NOT_FOUND');
+
+  if (!isAdmin) {
+    const ownBarber = await barbeiroRepository.findBarberByUser(usuarioId);
+    const isOwner =
+      ownBarber && block.barbeiro_id === ownBarber.id && block.criado_por === usuarioId;
+    if (!isOwner) throw new AppError('Acesso não autorizado.', 403, 'FORBIDDEN');
+  }
+  await pool.execute('DELETE FROM bloqueios_agenda WHERE id = ?', [bloqueioId]);
+}

@@ -1,1 +1,132 @@
-import{Router}from'express';import{auth}from'../middlewares/auth.js';import{requireAdmin}from'../middlewares/authorize.js';import{validate}from'../middlewares/validate.js';import{asyncHandler}from'../utils/asyncHandler.js';import*as s from'../controllers/servicoController.js';import*as b from'../controllers/barbeiroController.js';import*as o from'../controllers/operacionalController.js';import{idValidator,serviceValidator,statusValidator}from'../validators/servicoValidators.js';import{createBarberValidator,updateBarberValidator,syncServicesValidator}from'../validators/barbeiroValidators.js';import{blockValidator,configValidator,weekValidator}from'../validators/operacionalValidators.js';export const adminRoutes=Router();adminRoutes.use(auth(),requireAdmin());adminRoutes.get('/servicos',asyncHandler(s.listAdmin));adminRoutes.post('/servicos',serviceValidator,validate,asyncHandler(s.create));adminRoutes.get('/servicos/:id',idValidator,validate,asyncHandler(s.getAdmin));adminRoutes.put('/servicos/:id',idValidator,serviceValidator,validate,asyncHandler(s.update));adminRoutes.patch('/servicos/:id/status',idValidator,statusValidator,validate,asyncHandler(s.status));adminRoutes.get('/barbeiros',asyncHandler(b.listAdmin));adminRoutes.post('/barbeiros',createBarberValidator,validate,asyncHandler(b.create));adminRoutes.get('/barbeiros/:id',idValidator,validate,asyncHandler(b.getAdmin));adminRoutes.put('/barbeiros/:id',idValidator,updateBarberValidator,validate,asyncHandler(b.update));adminRoutes.patch('/barbeiros/:id/status',idValidator,statusValidator,validate,asyncHandler(b.status));adminRoutes.get('/barbeiros/:id/servicos',idValidator,validate,asyncHandler(b.getServices));adminRoutes.put('/barbeiros/:id/servicos',idValidator,syncServicesValidator,validate,asyncHandler(b.syncServices));adminRoutes.get('/barbeiros/:id/horarios',idValidator,validate,asyncHandler(o.barberHours));adminRoutes.put('/barbeiros/:id/horarios',idValidator,weekValidator,validate,asyncHandler(o.updateBarberHours));adminRoutes.get('/configuracoes',asyncHandler(o.adminConfig));adminRoutes.put('/configuracoes',configValidator,validate,asyncHandler(o.updateConfig));adminRoutes.get('/horarios-funcionamento',asyncHandler(o.adminHours));adminRoutes.put('/horarios-funcionamento',weekValidator,validate,asyncHandler(o.updateHours));adminRoutes.get('/bloqueios',asyncHandler(o.adminBlocks));adminRoutes.post('/bloqueios',blockValidator,validate,asyncHandler(o.createAdminBlock));adminRoutes.delete('/bloqueios/:id',idValidator,validate,asyncHandler(o.removeAdminBlock));
+import { Router } from 'express';
+
+import { auth } from '../middlewares/auth.js';
+import { requireAdmin } from '../middlewares/authorize.js';
+import { validate } from '../middlewares/validate.js';
+
+import * as barbeiroController from '../controllers/barbeiroController.js';
+import * as operacionalController from '../controllers/operacionalController.js';
+import * as servicoController from '../controllers/servicoController.js';
+
+import {
+  createBarberValidator,
+  syncServicesValidator,
+  updateBarberValidator,
+} from '../validators/barbeiroValidators.js';
+import {
+  blockValidator,
+  configValidator,
+  weekValidator,
+} from '../validators/operacionalValidators.js';
+import { idValidator, serviceValidator, statusValidator } from '../validators/servicoValidators.js';
+
+import { asyncHandler } from '../utils/asyncHandler.js';
+
+export const adminRoutes = Router();
+
+// Toda a área administrativa exige sessão válida e perfil de administrador.
+adminRoutes.use(auth(), requireAdmin());
+
+// Serviços
+adminRoutes.get('/servicos', asyncHandler(servicoController.listAdmin));
+adminRoutes.post('/servicos', serviceValidator, validate, asyncHandler(servicoController.create));
+adminRoutes.get('/servicos/:id', idValidator, validate, asyncHandler(servicoController.getAdmin));
+adminRoutes.put(
+  '/servicos/:id',
+  idValidator,
+  serviceValidator,
+  validate,
+  asyncHandler(servicoController.update),
+);
+adminRoutes.patch(
+  '/servicos/:id/status',
+  idValidator,
+  statusValidator,
+  validate,
+  asyncHandler(servicoController.status),
+);
+
+// Barbeiros
+adminRoutes.get('/barbeiros', asyncHandler(barbeiroController.listAdmin));
+adminRoutes.post(
+  '/barbeiros',
+  createBarberValidator,
+  validate,
+  asyncHandler(barbeiroController.create),
+);
+adminRoutes.get('/barbeiros/:id', idValidator, validate, asyncHandler(barbeiroController.getAdmin));
+adminRoutes.put(
+  '/barbeiros/:id',
+  idValidator,
+  updateBarberValidator,
+  validate,
+  asyncHandler(barbeiroController.update),
+);
+adminRoutes.patch(
+  '/barbeiros/:id/status',
+  idValidator,
+  statusValidator,
+  validate,
+  asyncHandler(barbeiroController.status),
+);
+
+// Serviços executados pelo barbeiro
+adminRoutes.get(
+  '/barbeiros/:id/servicos',
+  idValidator,
+  validate,
+  asyncHandler(barbeiroController.getServices),
+);
+adminRoutes.put(
+  '/barbeiros/:id/servicos',
+  idValidator,
+  syncServicesValidator,
+  validate,
+  asyncHandler(barbeiroController.syncServices),
+);
+
+// Jornada individual
+adminRoutes.get(
+  '/barbeiros/:id/horarios',
+  idValidator,
+  validate,
+  asyncHandler(operacionalController.barberHours),
+);
+adminRoutes.put(
+  '/barbeiros/:id/horarios',
+  idValidator,
+  weekValidator,
+  validate,
+  asyncHandler(operacionalController.updateBarberHours),
+);
+
+// Configuração operacional e funcionamento global
+adminRoutes.get('/configuracoes', asyncHandler(operacionalController.adminConfig));
+adminRoutes.put(
+  '/configuracoes',
+  configValidator,
+  validate,
+  asyncHandler(operacionalController.updateConfig),
+);
+adminRoutes.get('/horarios-funcionamento', asyncHandler(operacionalController.adminHours));
+adminRoutes.put(
+  '/horarios-funcionamento',
+  weekValidator,
+  validate,
+  asyncHandler(operacionalController.updateHours),
+);
+
+// Bloqueios de agenda
+adminRoutes.get('/bloqueios', asyncHandler(operacionalController.adminBlocks));
+adminRoutes.post(
+  '/bloqueios',
+  blockValidator,
+  validate,
+  asyncHandler(operacionalController.createAdminBlock),
+);
+adminRoutes.delete(
+  '/bloqueios/:id',
+  idValidator,
+  validate,
+  asyncHandler(operacionalController.removeAdminBlock),
+);

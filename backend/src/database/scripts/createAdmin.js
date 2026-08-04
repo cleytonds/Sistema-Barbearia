@@ -22,7 +22,8 @@ async function main() {
   const password = required('ADMIN_PASSWORD');
 
   if (!/^\S+@\S+\.\S+$/.test(email)) throw new Error('ADMIN_EMAIL inválido.');
-  if (phone.length < 10 || phone.length > 15) throw new Error('ADMIN_PHONE deve conter entre 10 e 15 dígitos.');
+  if (phone.length < 10 || phone.length > 15)
+    throw new Error('ADMIN_PHONE deve conter entre 10 e 15 dígitos.');
   if (password.length < 8 || !/[A-Za-z]/.test(password) || !/\d/.test(password)) {
     throw new Error('ADMIN_PASSWORD deve ter ao menos 8 caracteres, uma letra e um número.');
   }
@@ -33,14 +34,14 @@ async function main() {
     await connection.beginTransaction();
     const [[existing]] = await connection.execute(
       'SELECT id FROM usuarios WHERE email = ? OR telefone = ? LIMIT 1 FOR UPDATE',
-      [email, phone]
+      [email, phone],
     );
     if (existing) throw new Error('Já existe um usuário com o e-mail ou telefone informado.');
 
     const [result] = await connection.execute(
       `INSERT INTO usuarios (nome, email, telefone, senha_hash, perfil, ativo)
        VALUES (?, ?, ?, ?, 'admin', TRUE)`,
-      [name, email, phone, passwordHash]
+      [name, email, phone, passwordHash],
     );
     await connection.commit();
     console.log(`[admin] administrador criado com id ${result.insertId}.`);
@@ -57,4 +58,3 @@ main().catch((error) => {
   console.error(`[admin] falha: ${error.message}`);
   process.exitCode = 1;
 });
-

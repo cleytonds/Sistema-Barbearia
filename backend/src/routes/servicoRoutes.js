@@ -1,1 +1,11 @@
-import{Router}from'express';import*as c from'../controllers/servicoController.js';import{asyncHandler}from'../utils/asyncHandler.js';import{idValidator}from'../validators/servicoValidators.js';import{validate}from'../middlewares/validate.js';export const servicoRoutes=Router();servicoRoutes.get('/',asyncHandler(c.listPublic));servicoRoutes.get('/:id',idValidator,validate,asyncHandler(c.getPublic));
+import { Router } from 'express';
+
+import { validate } from '../middlewares/validate.js';
+import * as servicoController from '../controllers/servicoController.js';
+import { idValidator } from '../validators/servicoValidators.js';
+import { asyncHandler } from '../utils/asyncHandler.js';
+
+export const servicoRoutes = Router();
+
+servicoRoutes.get('/', asyncHandler(servicoController.listPublic));
+servicoRoutes.get('/:id', idValidator, validate, asyncHandler(servicoController.getPublic));

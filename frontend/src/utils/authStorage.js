@@ -14,6 +14,5 @@ export const authStorage = {
   },
   clear() {
     storage()?.removeItem(TOKEN_KEY);
-  }
+  },
 };
-

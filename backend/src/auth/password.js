@@ -14,4 +14,3 @@ export function comparePassword(password, hash) {
 export async function compareWithDummyHash(password) {
   return bcrypt.compare(password, await dummyHashPromise);
 }
-

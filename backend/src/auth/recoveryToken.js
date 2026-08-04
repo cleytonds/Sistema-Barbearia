@@ -8,4 +8,3 @@ export function generateRecoveryToken() {
 export function hashRecoveryToken(token) {
   return createHash('sha256').update(token).digest('hex');
 }
-

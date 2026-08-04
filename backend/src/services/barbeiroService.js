@@ -1,6 +1,211 @@
-import{pool}from'../config/database.js';import{hashPassword}from'../auth/password.js';import*as repo from'../repositories/barbeiroRepository.js';import{AppError}from'../utils/AppError.js';import{normalizeEmail,normalizeName,normalizePhone}from'../utils/normalize.js';import{paginationResult,parsePagination}from'../utils/pagination.js';const sorts={id:'b.id',nome:'u.nome',criado_em:'b.criado_em'};const pub=b=>({id:String(b.id),nome:b.nome,descricao:b.descricao,foto_url:b.foto_url,especialidades:b.especialidades});
-export async function list(q,p){const pg=parsePagination(q,sorts,'nome'),r=await repo.listBarbers({publicOnly:p,search:q.search?.trim()??'',ativo:q.ativo,pagination:pg});return paginationResult(p?r.rows.map(pub):r.rows,r.total,pg);}export async function get(id,p=false){const b=await repo.findBarber(id);if(!b||(p&&(!b.ativo||!b.usuario_ativo)))throw new AppError('Barbeiro não encontrado.',404,'BARBER_NOT_FOUND');return p?pub(b):b;}export async function services(id,p=false){await get(id,p);return repo.getServices(id,p);}export async function me(uid){const b=await repo.findBarberByUser(uid);if(!b||!b.ativo||!b.usuario_ativo)throw new AppError('Perfil profissional não encontrado.',404,'BARBER_NOT_FOUND');return b;}
-export async function create(d){const h=await hashPassword(d.senha),c=await pool.getConnection();try{await c.beginTransaction();const[u]=await c.execute(`INSERT INTO usuarios(nome,email,telefone,senha_hash,perfil,ativo)VALUES(?,?,?,?,'barbeiro',TRUE)`,[normalizeName(d.nome),normalizeEmail(d.email),normalizePhone(d.telefone),h]);const[b]=await c.execute('INSERT INTO barbeiros(usuario_id,descricao,foto_url,especialidades)VALUES(?,?,?,?)',[u.insertId,d.descricao?.trim()||null,d.foto_url||null,d.especialidades?.trim()||null]);await c.commit();return repo.findBarber(b.insertId);}catch(e){await c.rollback();if(e.code==='ER_DUP_ENTRY')throw new AppError('E-mail ou telefone já cadastrado.',409,'DUPLICATE_USER');throw e;}finally{c.release();}}
-export async function update(id,d){const c=await pool.getConnection();try{await c.beginTransaction();const b=await repo.findBarber(id,c);if(!b)throw new AppError('Barbeiro não encontrado.',404,'BARBER_NOT_FOUND');await c.execute('UPDATE usuarios SET nome=?,email=?,telefone=? WHERE id=?',[normalizeName(d.nome),normalizeEmail(d.email),normalizePhone(d.telefone),b.usuario_id]);await c.execute('UPDATE barbeiros SET descricao=?,foto_url=?,especialidades=? WHERE id=?',[d.descricao?.trim()||null,d.foto_url||null,d.especialidades?.trim()||null,id]);await c.commit();return repo.findBarber(id);}catch(e){await c.rollback();if(e.code==='ER_DUP_ENTRY')throw new AppError('E-mail ou telefone já cadastrado.',409,'DUPLICATE_USER');throw e;}finally{c.release();}}
-export async function setStatus(id,a){const c=await pool.getConnection();try{await c.beginTransaction();const b=await repo.findBarber(id,c);if(!b)throw new AppError('Barbeiro não encontrado.',404,'BARBER_NOT_FOUND');await c.execute('UPDATE usuarios SET ativo=? WHERE id=?',[a,b.usuario_id]);await c.execute('UPDATE barbeiros SET ativo=? WHERE id=?',[a,id]);await c.commit();return repo.findBarber(id);}catch(e){await c.rollback();throw e;}finally{c.release();}}
-export async function syncServices(id,ids){const c=await pool.getConnection();try{await c.beginTransaction();await c.execute('SELECT id FROM barbeiros WHERE id=? FOR UPDATE',[id]);const b=await repo.findBarber(id,c);if(!b||!b.ativo||!b.usuario_ativo)throw new AppError('Barbeiro não encontrado ou inativo.',404,'BARBER_NOT_FOUND');if(ids.length){const[f]=await c.query(`SELECT id,ativo FROM servicos WHERE id IN (${ids.map(()=>'?').join(',')})`,ids);if(f.length!==ids.length)throw new AppError('Serviço não encontrado.',404,'SERVICE_NOT_FOUND');if(f.some(x=>!x.ativo))throw new AppError('Serviço inativo.',422,'BUSINESS_RULE_VIOLATION');}await c.execute('DELETE FROM barbeiro_servicos WHERE barbeiro_id=?',[id]);for(const s of ids)await c.execute('INSERT INTO barbeiro_servicos(barbeiro_id,servico_id)VALUES(?,?)',[id,s]);await c.commit();return repo.getServices(id);}catch(e){await c.rollback();throw e;}finally{c.release();}}
+import { hashPassword } from '../auth/password.js';
+import { pool } from '../config/database.js';
+import * as barbeiroRepository from '../repositories/barbeiroRepository.js';
+import { AppError } from '../utils/AppError.js';
+import { normalizeEmail, normalizeName, normalizePhone } from '../utils/normalize.js';
+import { paginationResult, parsePagination } from '../utils/pagination.js';
+
+const allowedSorts = { id: 'b.id', nome: 'u.nome', criado_em: 'b.criado_em' };
+
+function toPublicBarber(barber) {
+  return {
+    id: String(barber.id),
+    nome: barber.nome,
+    descricao: barber.descricao,
+    foto_url: barber.foto_url,
+    especialidades: barber.especialidades,
+  };
+}
+
+/** Lista barbeiros com paginação e exposição adequada ao contexto público. */
+export async function list(query, publicOnly) {
+  const pagination = parsePagination(query, allowedSorts, 'nome');
+  const result = await barbeiroRepository.listBarbers({
+    publicOnly,
+    search: query.search?.trim() ?? '',
+    ativo: query.ativo,
+    pagination,
+  });
+  const rows = publicOnly ? result.rows.map(toPublicBarber) : result.rows;
+  return paginationResult(rows, result.total, pagination);
+}
+
+/** Obtém um barbeiro e impede exposição pública de perfis desativados. */
+export async function get(barbeiroId, publicOnly = false) {
+  const barber = await barbeiroRepository.findBarber(barbeiroId);
+  if (!barber || (publicOnly && (!barber.ativo || !barber.usuario_ativo))) {
+    throw new AppError('Barbeiro não encontrado.', 404, 'BARBER_NOT_FOUND');
+  }
+  return publicOnly ? toPublicBarber(barber) : barber;
+}
+
+export async function services(barbeiroId, publicOnly = false) {
+  await get(barbeiroId, publicOnly);
+  return barbeiroRepository.getServices(barbeiroId, publicOnly);
+}
+
+export async function me(usuarioId) {
+  const barber = await barbeiroRepository.findBarberByUser(usuarioId);
+  if (!barber || !barber.ativo || !barber.usuario_ativo) {
+    throw new AppError('Perfil profissional não encontrado.', 404, 'BARBER_NOT_FOUND');
+  }
+  return barber;
+}
+
+/**
+ * Cria o usuário e o perfil profissional do barbeiro na mesma transação.
+ * Uma falha na segunda inserção desfaz o usuário, evitando contas órfãs.
+ */
+export async function create(data) {
+  const passwordHash = await hashPassword(data.senha);
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [userResult] = await connection.execute(
+      `
+        INSERT INTO usuarios (nome, email, telefone, senha_hash, perfil, ativo)
+        VALUES (?, ?, ?, ?, 'barbeiro', TRUE)
+      `,
+      [
+        normalizeName(data.nome),
+        normalizeEmail(data.email),
+        normalizePhone(data.telefone),
+        passwordHash,
+      ],
+    );
+    const [barberResult] = await connection.execute(
+      `
+        INSERT INTO barbeiros (usuario_id, descricao, foto_url, especialidades)
+        VALUES (?, ?, ?, ?)
+      `,
+      [
+        userResult.insertId,
+        data.descricao?.trim() || null,
+        data.foto_url || null,
+        data.especialidades?.trim() || null,
+      ],
+    );
+    await connection.commit();
+    return barbeiroRepository.findBarber(barberResult.insertId);
+  } catch (error) {
+    await connection.rollback();
+    if (error.code === 'ER_DUP_ENTRY') {
+      throw new AppError('E-mail ou telefone já cadastrado.', 409, 'DUPLICATE_USER');
+    }
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+/** Atualiza dados pessoais e profissionais de forma atômica. */
+export async function update(barbeiroId, data) {
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const barber = await barbeiroRepository.findBarber(barbeiroId, connection);
+    if (!barber) throw new AppError('Barbeiro não encontrado.', 404, 'BARBER_NOT_FOUND');
+
+    await connection.execute('UPDATE usuarios SET nome = ?, email = ?, telefone = ? WHERE id = ?', [
+      normalizeName(data.nome),
+      normalizeEmail(data.email),
+      normalizePhone(data.telefone),
+      barber.usuario_id,
+    ]);
+    await connection.execute(
+      `
+        UPDATE barbeiros
+        SET descricao = ?, foto_url = ?, especialidades = ?
+        WHERE id = ?
+      `,
+      [
+        data.descricao?.trim() || null,
+        data.foto_url || null,
+        data.especialidades?.trim() || null,
+        barbeiroId,
+      ],
+    );
+    await connection.commit();
+    return barbeiroRepository.findBarber(barbeiroId);
+  } catch (error) {
+    await connection.rollback();
+    if (error.code === 'ER_DUP_ENTRY') {
+      throw new AppError('E-mail ou telefone já cadastrado.', 409, 'DUPLICATE_USER');
+    }
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+/**
+ * Aplica desativação lógica tanto à conta quanto ao perfil profissional.
+ * Os registros permanecem no banco para preservar referências históricas.
+ */
+export async function setStatus(barbeiroId, ativo) {
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    const barber = await barbeiroRepository.findBarber(barbeiroId, connection);
+    if (!barber) throw new AppError('Barbeiro não encontrado.', 404, 'BARBER_NOT_FOUND');
+    await connection.execute('UPDATE usuarios SET ativo = ? WHERE id = ?', [
+      ativo,
+      barber.usuario_id,
+    ]);
+    await connection.execute('UPDATE barbeiros SET ativo = ? WHERE id = ?', [ativo, barbeiroId]);
+    await connection.commit();
+    return barbeiroRepository.findBarber(barbeiroId);
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+/**
+ * Sincroniza a lista final de serviços executados por um barbeiro.
+ *
+ * O barbeiro é bloqueado e todos os serviços são validados antes da remoção dos
+ * vínculos anteriores. Assim, qualquer falha preserva integralmente o estado anterior.
+ */
+export async function syncServices(barbeiroId, servicoIds) {
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+    await connection.execute('SELECT id FROM barbeiros WHERE id = ? FOR UPDATE', [barbeiroId]);
+    const barber = await barbeiroRepository.findBarber(barbeiroId, connection);
+    if (!barber || !barber.ativo || !barber.usuario_ativo) {
+      throw new AppError('Barbeiro não encontrado ou inativo.', 404, 'BARBER_NOT_FOUND');
+    }
+
+    if (servicoIds.length) {
+      const placeholders = servicoIds.map(() => '?').join(', ');
+      const [servicesFound] = await connection.query(
+        `SELECT id, ativo FROM servicos WHERE id IN (${placeholders})`,
+        servicoIds,
+      );
+      if (servicesFound.length !== servicoIds.length) {
+        throw new AppError('Serviço não encontrado.', 404, 'SERVICE_NOT_FOUND');
+      }
+      if (servicesFound.some((service) => !service.ativo)) {
+        throw new AppError('Serviço inativo.', 422, 'BUSINESS_RULE_VIOLATION');
+      }
+    }
+
+    await connection.execute('DELETE FROM barbeiro_servicos WHERE barbeiro_id = ?', [barbeiroId]);
+    for (const servicoId of servicoIds) {
+      await connection.execute(
+        'INSERT INTO barbeiro_servicos (barbeiro_id, servico_id) VALUES (?, ?)',
+        [barbeiroId, servicoId],
+      );
+    }
+    await connection.commit();
+    return barbeiroRepository.getServices(barbeiroId);
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}

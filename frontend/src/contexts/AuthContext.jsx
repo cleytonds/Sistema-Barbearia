@@ -47,17 +47,23 @@ export function AuthProvider({ children }) {
     return () => window.removeEventListener('auth:unauthorized', unauthorized);
   }, [clearSession, initialize]);
 
-  const login = useCallback(async (email, senha) => {
-    const session = await authService.login(email, senha);
-    applySession(session);
-    return session.usuario;
-  }, [applySession]);
+  const login = useCallback(
+    async (email, senha) => {
+      const session = await authService.login(email, senha);
+      applySession(session);
+      return session.usuario;
+    },
+    [applySession],
+  );
 
-  const register = useCallback(async (data) => {
-    const session = await authService.register(data);
-    applySession(session);
-    return session.usuario;
-  }, [applySession]);
+  const register = useCallback(
+    async (data) => {
+      const session = await authService.register(data);
+      applySession(session);
+      return session.usuario;
+    },
+    [applySession],
+  );
 
   const logout = useCallback(async () => {
     try {
@@ -67,26 +73,31 @@ export function AuthProvider({ children }) {
     }
   }, [clearSession]);
 
-  const changePassword = useCallback(async (data) => {
-    const session = await authService.changePassword(data);
-    applySession(session);
-    return session.usuario;
-  }, [applySession]);
+  const changePassword = useCallback(
+    async (data) => {
+      const session = await authService.changePassword(data);
+      applySession(session);
+      return session.usuario;
+    },
+    [applySession],
+  );
 
-  const value = useMemo(() => ({
-    usuario,
-    token,
-    loading,
-    isAuthenticated: Boolean(usuario && token),
-    initialize,
-    login,
-    logout,
-    register,
-    changePassword,
-    forgotPassword: authService.forgotPassword,
-    resetPassword: authService.resetPassword
-  }), [usuario, token, loading, initialize, login, logout, register, changePassword]);
+  const value = useMemo(
+    () => ({
+      usuario,
+      token,
+      loading,
+      isAuthenticated: Boolean(usuario && token),
+      initialize,
+      login,
+      logout,
+      register,
+      changePassword,
+      forgotPassword: authService.forgotPassword,
+      resetPassword: authService.resetPassword,
+    }),
+    [usuario, token, loading, initialize, login, logout, register, changePassword],
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
-

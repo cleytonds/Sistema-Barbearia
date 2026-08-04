@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { requireAdmin, requireBarbeiro, requireCliente, requireRoles } from '../src/middlewares/authorize.js';
+import {
+  requireAdmin,
+  requireBarbeiro,
+  requireCliente,
+  requireRoles,
+} from '../src/middlewares/authorize.js';
 
 function execute(middleware, profile) {
   return new Promise((resolve) => {
@@ -17,4 +22,3 @@ test('middlewares de perfil permitem apenas os papéis configurados', async () =
   assert.equal(await execute(requireRoles('admin', 'barbeiro'), 'barbeiro'), null);
   assert.equal((await execute(requireCliente(), null)).statusCode, 401);
 });
-

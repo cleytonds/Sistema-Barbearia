@@ -8,4 +8,3 @@ export function RoleRoute({ roles, children }) {
   if (!roles.includes(usuario.perfil)) return <Navigate to="/" replace />;
   return children ?? <Outlet />;
 }
-

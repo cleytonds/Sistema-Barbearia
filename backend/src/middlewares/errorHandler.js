@@ -13,8 +13,7 @@ export function errorHandler(error, _req, res, _next) {
       code: error.code ?? 'INTERNAL_ERROR',
       message: statusCode >= 500 && isProduction ? 'Erro interno do servidor.' : error.message,
       ...(error.details && { details: error.details }),
-      ...(!isProduction && error.stack && { stack: error.stack })
-    }
+      ...(!isProduction && error.stack && { stack: error.stack }),
+    },
   });
 }
-

@@ -30,4 +30,3 @@ export async function resetPassword(req, res) {
 export async function changePassword(req, res) {
   res.json(await authService.changePassword(req.auth.usuario.id, req.body));
 }
-

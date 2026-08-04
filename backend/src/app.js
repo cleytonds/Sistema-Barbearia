@@ -16,4 +16,3 @@ app.use(express.urlencoded({ extended: false }));
 app.use('/api', router);
 app.use(notFound);
 app.use(errorHandler);
-

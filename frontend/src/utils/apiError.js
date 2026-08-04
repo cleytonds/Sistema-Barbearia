@@ -1,1 +1,7 @@
-export function apiError(error){return{code:error.response?.data?.error?.code??'NETWORK_ERROR',message:error.response?.data?.error?.message??'Não foi possível concluir a operação.',details:error.response?.data?.error?.details??[]};}
+export function apiError(error) {
+  return {
+    code: error.response?.data?.error?.code ?? 'NETWORK_ERROR',
+    message: error.response?.data?.error?.message ?? 'Não foi possível concluir a operação.',
+    details: error.response?.data?.error?.details ?? [],
+  };
+}

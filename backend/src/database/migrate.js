@@ -8,9 +8,7 @@ const directory = path.join(path.dirname(fileURLToPath(import.meta.url)), 'migra
 const lockName = 'barbearia_schema_migrations';
 
 async function migrationFiles() {
-  return (await readdir(directory))
-    .filter((name) => /^\d{3}_[a-z0-9_]+\.sql$/.test(name))
-    .sort();
+  return (await readdir(directory)).filter((name) => /^\d{3}_[a-z0-9_]+\.sql$/.test(name)).sort();
 }
 
 async function ensureControlTable(connection) {
@@ -27,13 +25,16 @@ async function ensureControlTable(connection) {
 }
 
 async function loadApplied(connection) {
-  const [rows] = await connection.query('SELECT nome, checksum, executada_em FROM schema_migrations ORDER BY nome');
+  const [rows] = await connection.query(
+    'SELECT nome, checksum, executada_em FROM schema_migrations ORDER BY nome',
+  );
   return new Map(rows.map((row) => [row.nome, row]));
 }
 
 async function acquireLock(connection) {
   const [[row]] = await connection.execute('SELECT GET_LOCK(?, 10) AS acquired', [lockName]);
-  if (row.acquired !== 1) throw new Error('Não foi possível obter o lock exclusivo das migrations.');
+  if (row.acquired !== 1)
+    throw new Error('Não foi possível obter o lock exclusivo das migrations.');
 }
 
 async function releaseLock(connection) {
@@ -54,16 +55,23 @@ async function up(connection, files, applied) {
     const previous = applied.get(file);
 
     if (previous) {
-      if (previous.checksum !== checksum) throw new Error(`Migration já aplicada foi alterada: ${file}`);
+      if (previous.checksum !== checksum)
+        throw new Error(`Migration já aplicada foi alterada: ${file}`);
       console.log(`ignorada  ${file}`);
       continue;
     }
 
     console.log(`aplicando ${file}`);
     try {
-      const statements = sql.split(/^\s*-- statement-breakpoint\s*$/m).map((item) => item.trim().replace(/;\s*$/, '')).filter(Boolean);
+      const statements = sql
+        .split(/^\s*-- statement-breakpoint\s*$/m)
+        .map((item) => item.trim().replace(/;\s*$/, ''))
+        .filter(Boolean);
       for (const statement of statements) await connection.query(statement);
-      await connection.execute('INSERT INTO schema_migrations (nome, checksum) VALUES (?, ?)', [file, checksum]);
+      await connection.execute('INSERT INTO schema_migrations (nome, checksum) VALUES (?, ?)', [
+        file,
+        checksum,
+      ]);
       console.log(`concluída ${file}`);
     } catch (error) {
       throw new Error(`Falha na migration ${file}: ${error.message}`, { cause: error });
@@ -73,7 +81,8 @@ async function up(connection, files, applied) {
 
 async function main() {
   const command = process.argv[2] ?? 'up';
-  if (!['up', 'status'].includes(command)) throw new Error(`Comando de migration inválido: ${command}`);
+  if (!['up', 'status'].includes(command))
+    throw new Error(`Comando de migration inválido: ${command}`);
 
   const connection = await pool.getConnection();
   let locked = false;

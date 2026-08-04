@@ -1,1 +1,41 @@
-import{Router}from'express';import{auth}from'../middlewares/auth.js';import{requireBarbeiro}from'../middlewares/authorize.js';import{validate}from'../middlewares/validate.js';import{asyncHandler}from'../utils/asyncHandler.js';import*as b from'../controllers/barbeiroController.js';import*as o from'../controllers/operacionalController.js';import{idValidator}from'../validators/servicoValidators.js';import{myBlockValidator}from'../validators/operacionalValidators.js';export const barbeiroAreaRoutes=Router();barbeiroAreaRoutes.use(auth(),requireBarbeiro());barbeiroAreaRoutes.get('/me',asyncHandler(b.me));barbeiroAreaRoutes.get('/me/servicos',asyncHandler(b.myServices));barbeiroAreaRoutes.get('/me/horarios',asyncHandler(o.myHours));barbeiroAreaRoutes.get('/me/bloqueios',asyncHandler(o.myBlocks));barbeiroAreaRoutes.post('/me/bloqueios',myBlockValidator,validate,asyncHandler(o.createMyBlock));barbeiroAreaRoutes.delete('/me/bloqueios/:id',idValidator,validate,asyncHandler(o.removeMyBlock));
+import { Router } from 'express';
+
+import { auth } from '../middlewares/auth.js';
+import { requireBarbeiro } from '../middlewares/authorize.js';
+import { validate } from '../middlewares/validate.js';
+
+import * as barbeiroController from '../controllers/barbeiroController.js';
+import * as operacionalController from '../controllers/operacionalController.js';
+
+import { myBlockValidator } from '../validators/operacionalValidators.js';
+import { idValidator } from '../validators/servicoValidators.js';
+
+import { asyncHandler } from '../utils/asyncHandler.js';
+
+export const barbeiroAreaRoutes = Router();
+
+barbeiroAreaRoutes.use(auth(), requireBarbeiro());
+
+// Perfil profissional
+barbeiroAreaRoutes.get('/me', asyncHandler(barbeiroController.me));
+
+// Serviços executados
+barbeiroAreaRoutes.get('/me/servicos', asyncHandler(barbeiroController.myServices));
+
+// Jornada de trabalho
+barbeiroAreaRoutes.get('/me/horarios', asyncHandler(operacionalController.myHours));
+
+// Bloqueios da própria agenda
+barbeiroAreaRoutes.get('/me/bloqueios', asyncHandler(operacionalController.myBlocks));
+barbeiroAreaRoutes.post(
+  '/me/bloqueios',
+  myBlockValidator,
+  validate,
+  asyncHandler(operacionalController.createMyBlock),
+);
+barbeiroAreaRoutes.delete(
+  '/me/bloqueios/:id',
+  idValidator,
+  validate,
+  asyncHandler(operacionalController.removeMyBlock),
+);

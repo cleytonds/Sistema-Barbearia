@@ -17,7 +17,11 @@ export const env = Object.freeze({
     issuer: process.env.JWT_ISSUER ?? 'barbearia-api',
     audience: process.env.JWT_AUDIENCE ?? 'barbearia-web',
     revocationCleanupMinutes: toPositiveInteger(process.env.JWT_REVOCATION_CLEANUP_MINUTES, 60),
-    isConfigured: Boolean(process.env.JWT_SECRET && process.env.JWT_SECRET !== knownPlaceholder && process.env.JWT_SECRET.length >= 32)
+    isConfigured: Boolean(
+      process.env.JWT_SECRET &&
+      process.env.JWT_SECRET !== knownPlaceholder &&
+      process.env.JWT_SECRET.length >= 32,
+    ),
   },
   database: {
     host: process.env.DB_HOST ?? 'localhost',
@@ -25,6 +29,6 @@ export const env = Object.freeze({
     user: process.env.DB_USER ?? 'root',
     password: process.env.DB_PASSWORD ?? '',
     database: process.env.DB_NAME ?? 'barbearia_agendamento',
-    connectionLimit: toPositiveInteger(process.env.DB_CONNECTION_LIMIT, 10)
-  }
+    connectionLimit: toPositiveInteger(process.env.DB_CONNECTION_LIMIT, 10),
+  },
 });

@@ -2,14 +2,21 @@
   "name": "barbearia-agendamento",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "concurrently -n API,WEB -c yellow,cyan \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
     "build": "npm run build --prefix frontend",
+    "format": "prettier --write \"backend/{src,test}/**/*.js\" \"frontend/{src,test}/**/*.{js,jsx}\"",
+    "format:check": "prettier --check \"backend/{src,test}/**/*.js\" \"frontend/{src,test}/**/*.{js,jsx}\"",
+    "lint": "eslint backend/src backend/test frontend/src frontend/test",
     "start": "npm run start --prefix backend",
     "test": "npm run test --prefix backend && npm run test --prefix frontend"
   },
   "devDependencies": {
-    "concurrently": "^9.2.0"
+    "concurrently": "^9.2.0",
+    "eslint": "^9.39.5",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "globals": "^16.5.0",
+    "prettier": "^3.9.6"
   }
 }
-

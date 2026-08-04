@@ -6,8 +6,8 @@ globalThis.window = {
   sessionStorage: {
     getItem: (key) => values.get(key) ?? null,
     setItem: (key, value) => values.set(key, value),
-    removeItem: (key) => values.delete(key)
-  }
+    removeItem: (key) => values.delete(key),
+  },
 };
 
 const { authStorage } = await import('../src/utils/authStorage.js');
@@ -19,4 +19,3 @@ test('authStorage centraliza gravação, leitura e remoção do token', () => {
   authStorage.clear();
   assert.equal(authStorage.getToken(), null);
 });
-

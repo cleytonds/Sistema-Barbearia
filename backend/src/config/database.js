@@ -8,7 +8,7 @@ export const pool = mysql.createPool({
   queueLimit: 0,
   enableKeepAlive: true,
   timezone: 'Z',
-  decimalNumbers: true
+  decimalNumbers: true,
 });
 
 export async function checkDatabaseConnection() {

@@ -9,7 +9,7 @@ const migrationDirectory = path.join(backendRoot, 'src', 'database', 'migrations
 
 test('migrations possuem ordem, nome único e um CREATE TABLE cada', async () => {
   const files = (await readdir(migrationDirectory)).filter((file) => file.endsWith('.sql')).sort();
-  assert.equal(files.length, 13);
+  assert.equal(files.length, 14);
   assert.equal(new Set(files).size, files.length);
   assert.deepEqual(
     files.map((file) => file.slice(0, 3)),

@@ -1,13 +1,13 @@
 import { pool } from '../config/database.js';
 import { ACTIVE_APPOINTMENT_STATUSES } from '../domain/availability/constants.js';
 
-export async function findSettings(connection = pool) {
+export async function findSettings(connection = pool, { snapshotProvided = false } = {}) {
   const [[settings]] = await connection.execute(
     `
       SELECT
         fuso_horario,
-        antecedencia_maxima_dias,
-        intervalo_entre_atendimentos_minutos
+        antecedencia_maxima_dias
+        ${snapshotProvided ? '' : ', intervalo_entre_atendimentos_minutos'}
       FROM configuracoes
       WHERE id = 1
     `,
@@ -31,10 +31,14 @@ export async function findActiveBarber(barbeiroId, connection = pool) {
   return barber ?? null;
 }
 
-export async function findActiveService(servicoId, connection = pool) {
+export async function findActiveService(
+  servicoId,
+  connection = pool,
+  { snapshotProvided = false } = {},
+) {
   const [[service]] = await connection.execute(
     `
-      SELECT id, nome, preco, duracao_minutos
+      SELECT id, nome${snapshotProvided ? '' : ', preco, duracao_minutos'}
       FROM servicos
       WHERE id = ? AND ativo = TRUE
       LIMIT 1
@@ -104,12 +108,12 @@ export async function findAppointmentsForPeriod(
 
   const [rows] = await connection.execute(
     `
-      SELECT inicio_em, fim_em, status
+      SELECT inicio_em, fim_ocupacao_em, status
       FROM agendamentos
       WHERE barbeiro_id = ?
         AND status IN (${statusPlaceholders})
         AND inicio_em < ?
-        AND fim_em > ?
+        AND fim_ocupacao_em > ?
         ${exclusion}
       ORDER BY inicio_em
     `,
@@ -133,12 +137,13 @@ export async function lockBarber(barbeiroId, connection) {
 export async function loadAvailabilityContext(
   { barbeiroId, servicoId, dayOfWeek, startUtc, endUtc, excludeAppointmentId },
   connection = pool,
-  { parallel = connection === pool } = {},
+  { parallel = connection === pool, bookingSnapshot = null } = {},
 ) {
+  const snapshotProvided = bookingSnapshot != null;
   const tasks = [
-    () => findSettings(connection),
+    () => findSettings(connection, { snapshotProvided }),
     () => findActiveBarber(barbeiroId, connection),
-    () => findActiveService(servicoId, connection),
+    () => findActiveService(servicoId, connection, { snapshotProvided }),
     () => findBarberServiceLink(barbeiroId, servicoId, connection),
     () => findBusinessHours(dayOfWeek, connection),
     () => findBarberWorkingHours(barbeiroId, dayOfWeek, connection),

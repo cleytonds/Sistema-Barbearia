@@ -42,3 +42,28 @@ export const availabilityLimiter = rateLimit({
   windowMs: 60_000,
   limit: 60,
 });
+
+export const appointmentCreationLimiter = rateLimit({
+  ...base,
+  windowMs: 15 * 60_000,
+  limit: 10,
+  keyGenerator: userKey,
+});
+export const appointmentMutationLimiter = rateLimit({
+  ...base,
+  windowMs: 15 * 60_000,
+  limit: 20,
+  keyGenerator: userKey,
+});
+export const appointmentStatusLimiter = rateLimit({
+  ...base,
+  windowMs: 15 * 60_000,
+  limit: 60,
+  keyGenerator: userKey,
+});
+export const appointmentReadLimiter = rateLimit({
+  ...base,
+  windowMs: 15 * 60_000,
+  limit: 120,
+  keyGenerator: userKey,
+});

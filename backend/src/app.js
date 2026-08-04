@@ -4,11 +4,13 @@ import helmet from 'helmet';
 import { env } from './config/env.js';
 import { errorHandler } from './middlewares/errorHandler.js';
 import { notFound } from './middlewares/notFound.js';
+import { requestContext } from './middlewares/requestContext.js';
 import { router } from './routes/index.js';
 
 export const app = express();
 
 app.disable('x-powered-by');
+app.use(requestContext);
 app.use(helmet());
 app.use(cors({ origin: env.frontendUrl, credentials: true }));
 app.use(express.json({ limit: '100kb' }));

@@ -44,7 +44,7 @@ async function validRequest(overrides = {}) {
   return request({ barbeiroId: barberId, servicoId: serviceId, data: localDate, ...overrides });
 }
 
-async function insertAppointment(status, start = '11:00', end = '11:30') {
+async function insertAppointment(status, start = '11:00', end = '11:30', bufferMinutes = 10) {
   const completedAt = status === 'concluido' ? localToUtc(end) : null;
   const canceledAt = status === 'cancelado' ? localToUtc(end) : null;
   const canceledBy = status === 'cancelado' ? clientId : null;
@@ -52,9 +52,9 @@ async function insertAppointment(status, start = '11:00', end = '11:30') {
     `
       INSERT INTO agendamentos (
         cliente_id, barbeiro_id, servico_id, criado_por, origem,
-        inicio_em, fim_em, preco, duracao_minutos, status,
+        inicio_em, fim_em, fim_ocupacao_em, preco, duracao_minutos, buffer_minutos, status,
         concluido_em, cancelado_em, cancelado_por
-      ) VALUES (?, ?, ?, ?, 'admin', ?, ?, 40.00, 30, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, 'admin', ?, ?, ?, 40.00, 30, ?, ?, ?, ?, ?)
     `,
     [
       clientId,
@@ -63,6 +63,8 @@ async function insertAppointment(status, start = '11:00', end = '11:30') {
       clientId,
       localToUtc(start),
       localToUtc(end),
+      new Date(localToUtc(end).getTime() + bufferMinutes * 60_000),
+      bufferMinutes,
       status,
       completedAt,
       canceledAt,

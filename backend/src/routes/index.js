@@ -6,6 +6,9 @@ import { configuracaoRoutes } from './configuracaoRoutes.js';
 import { adminRoutes } from './adminRoutes.js';
 import { barbeiroAreaRoutes } from './barbeiroAreaRoutes.js';
 import { disponibilidadeRoutes } from './disponibilidadeRoutes.js';
+import { agendamentoRoutes } from './agendamentoRoutes.js';
+import { adminAgendamentoRoutes } from './adminAgendamentoRoutes.js';
+import { barbeiroAgendamentoRoutes } from './barbeiroAgendamentoRoutes.js';
 
 export const router = Router();
 
@@ -20,3 +23,6 @@ router.use('/configuracoes', configuracaoRoutes);
 router.use('/admin', adminRoutes);
 router.use('/barbeiro', barbeiroAreaRoutes);
 router.use('/disponibilidade', disponibilidadeRoutes);
+router.use('/agendamentos', agendamentoRoutes);
+router.use('/admin/agendamentos', adminAgendamentoRoutes);
+router.use('/barbeiro/agendamentos', barbeiroAgendamentoRoutes);

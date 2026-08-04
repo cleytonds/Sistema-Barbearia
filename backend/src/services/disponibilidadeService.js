@@ -48,12 +48,10 @@ function mapBlocks(rows) {
   return rows.map((row) => ({ start: new Date(row.inicio_em), end: new Date(row.fim_em) }));
 }
 
-function mapAppointments(rows, bufferMinutes) {
+function mapAppointments(rows) {
   return rows.map((row) => ({
     start: new Date(row.inicio_em),
-    // O buffer vigente é aplicado também aos registros antigos. Ele ainda não é
-    // preservado individualmente e deverá ser reavaliado antes da Fase 6.
-    end: new Date(new Date(row.fim_em).getTime() + bufferMinutes * 60_000),
+    end: new Date(row.fim_ocupacao_em),
   }));
 }
 
@@ -101,7 +99,7 @@ export async function listAvailability({ barbeiroId, servicoId, date, nowUtc = n
     durationMinutes: context.service.duracao_minutos,
     bufferMinutes,
     blocks: mapBlocks(context.blocks),
-    appointments: mapAppointments(context.appointments, bufferMinutes),
+    appointments: mapAppointments(context.appointments),
     nowUtc,
   });
   return publicResponse(date, context, horarios);
@@ -119,6 +117,7 @@ export async function validateAvailability({
   connection = pool,
   mode,
   nowUtc,
+  bookingSnapshot = null,
 }) {
   assertAvailabilityMode(mode);
   let database = connection;
@@ -135,7 +134,9 @@ export async function validateAvailability({
     if (!locked) throw new AppError('Barbeiro não encontrado.', 404, 'BARBER_NOT_FOUND');
   }
 
-  const settings = await availabilityRepository.findSettings(database);
+  const settings = await availabilityRepository.findSettings(database, {
+    snapshotProvided: bookingSnapshot != null,
+  });
   const localStart = DateTime.fromJSDate(inicioUtc, { zone: settings.fuso_horario });
   const date = localStart.toFormat('yyyy-MM-dd');
   const parsedDate = parseBookingDate(
@@ -148,7 +149,10 @@ export async function validateAvailability({
   const context = await availabilityRepository.loadAvailabilityContext(
     { barbeiroId, servicoId, excludeAppointmentId, ...period },
     database,
-    { parallel: mode === AVAILABILITY_MODE.READ_ONLY && database === pool },
+    {
+      parallel: mode === AVAILABILITY_MODE.READ_ONLY && database === pool,
+      bookingSnapshot,
+    },
   );
   assertCoreContext(context);
   if (!context.businessHours?.ativo) {
@@ -162,31 +166,34 @@ export async function validateAvailability({
   if (localStart.second !== 0 || localMinute % SLOT_INTERVAL_MINUTES !== 0) {
     throw new AppError('Horário indisponível.', 409, 'AVAILABILITY_CHANGED');
   }
-  const bufferMinutes = context.settings.intervalo_entre_atendimentos_minutos;
+  const durationMinutes = bookingSnapshot?.durationMinutes ?? context.service.duracao_minutos;
+  const bufferMinutes =
+    bookingSnapshot?.bufferMinutes ?? context.settings.intervalo_entre_atendimentos_minutos;
   const available = buildDailyAvailability({
     date,
     timeZone: settings.fuso_horario,
     businessHours: context.businessHours,
     barberHours: context.barberHours,
-    durationMinutes: context.service.duracao_minutos,
+    durationMinutes,
     bufferMinutes,
     blocks: mapBlocks(context.blocks),
-    appointments: mapAppointments(context.appointments, bufferMinutes),
+    appointments: mapAppointments(context.appointments),
     nowUtc,
   }).some((slot) => slot.inicioLocal === localStart.toFormat('HH:mm'));
   if (!available) throw new AppError('Disponibilidade alterada.', 409, 'AVAILABILITY_CHANGED');
 
   const bookingPeriod = calculateBookingPeriod({
     startUtc: inicioUtc,
-    durationMinutes: context.service.duracao_minutos,
+    durationMinutes,
     bufferMinutes,
   });
   return {
     available: true,
     serviceEndUtc: bookingPeriod.serviceEndUtc,
     occupiedUntilUtc: bookingPeriod.occupiedUntilUtc,
-    serviceDurationMinutes: context.service.duracao_minutos,
+    serviceDurationMinutes: durationMinutes,
     bufferMinutes,
+    servicePrice: context.service.preco,
   };
 }
 

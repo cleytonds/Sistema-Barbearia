@@ -586,7 +586,7 @@ test('bloqueios aplicam propriedade, UTC, conflitos, exclusão e locks', async (
   const globalId = made.value.data.id;
   const service = await createService(`${prefix} Agenda`);
   const [appt] = await pool.execute(
-    "INSERT INTO agendamentos(cliente_id,barbeiro_id,servico_id,inicio_em,fim_em,preco,duracao_minutos,status,origem,criado_por) VALUES(?,?,?,'2035-10-11 12:00:00','2035-10-11 13:00:00',35,60,'confirmado','admin',?)",
+    "INSERT INTO agendamentos(cliente_id,barbeiro_id,servico_id,inicio_em,fim_em,fim_ocupacao_em,preco,duracao_minutos,buffer_minutos,status,origem,criado_por) VALUES(?,?,?,'2035-10-11 12:00:00','2035-10-11 13:00:00','2035-10-11 13:00:00',35,60,0,'confirmado','admin',?)",
     [client.id, barber.id, service.value.data.id, admin.id],
   );
   ids.appointments.push(appt.insertId);

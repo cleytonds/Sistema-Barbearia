@@ -155,6 +155,29 @@ horizontal deverá usar Redis ou armazenamento compartilhado equivalente.
 
 O navegador acessa a SPA React, que futuramente consumirá `/api` com Axios. A API aplica cabeçalhos seguros, CORS e parsing limitado antes de encaminhar requisições às rotas. Erros passam por um middleware único. O pool MySQL é compartilhado e usa conexões assíncronas; repositories e regras de negócio serão introduzidos quando houver domínio persistido.
 
+## Resiliência e observabilidade
+
+A API aceita `X-Request-Id` com até 64 caracteres ASCII seguros. Valores ausentes ou inválidos
+são substituídos por UUID, e o identificador efetivo sempre retorna no header da resposta. Ele
+correlaciona logs durante a requisição, mas ainda não é persistido no histórico. Uma migration
+futura específica poderá adicionar correlation ID sem modificar migrations aplicadas.
+
+Logs operacionais usam estrutura com allowlist e podem conter request ID, IDs técnicos, operação,
+código do erro, tentativa e duração. Senhas, hashes de senha, JWTs, tokens de recuperação,
+Idempotency-Key original, bodies completos, observações, e-mail, telefone e credenciais do banco
+nunca são registrados. Em produção, a saída é JSON.
+
+Criação idempotente, cancelamento, reagendamento e mudança de status admitem retry apenas para
+`ER_LOCK_DEADLOCK` e `ER_LOCK_WAIT_TIMEOUT`. São no máximo três tentativas, com atraso curto e
+limitado. Cada tentativa usa nova conexão e nova transação; a tentativa anterior sempre sofre
+rollback e libera sua conexão. Ao esgotar o limite, o erro final é preservado.
+
+Erros de validação, autorização, disponibilidade, idempotência, estado, entidades ausentes,
+constraints e `ER_DUP_ENTRY` comum não são repetidos. O conflito do índice único de idempotência
+mantém seu fluxo próprio de rollback, nova leitura e comparação do payload. A mesma chave e os
+mesmos hashes são preservados durante retries transitórios; idempotência e retry de lock são
+mecanismos distintos. O backend é a autoridade para limites e validações desses contratos.
+
 ## Screenshots
 
 Adicionar imagens após a implementação das páginas públicas e dos painéis.

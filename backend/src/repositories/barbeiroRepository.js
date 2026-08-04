@@ -14,7 +14,10 @@ export async function findBarberByUser(id, db = pool) {
   );
   return r ?? null;
 }
-export async function listBarbers({ publicOnly, search, ativo, pagination }, db = pool) {
+export async function listBarbers(
+  { publicOnly, search, ativo, serviceId = null, pagination },
+  db = pool,
+) {
   const c = [],
     p = [];
   if (publicOnly) c.push('b.ativo=TRUE AND u.ativo=TRUE');
@@ -26,14 +29,20 @@ export async function listBarbers({ publicOnly, search, ativo, pagination }, db 
     c.push('u.nome LIKE ?');
     p.push(`%${search}%`);
   }
+  if (serviceId) {
+    c.push(
+      'EXISTS (SELECT 1 FROM barbeiro_servicos bs WHERE bs.barbeiro_id=b.id AND bs.servico_id=?)',
+    );
+    p.push(serviceId);
+  }
   const w = c.length ? `WHERE ${c.join(' AND ')}` : '';
   const [[n]] = await db.execute(
     `SELECT COUNT(*) total FROM barbeiros b JOIN usuarios u ON u.id=b.usuario_id ${w}`,
     p,
   );
   const [r] = await db.execute(
-    `SELECT ${cols} FROM barbeiros b JOIN usuarios u ON u.id=b.usuario_id ${w} ORDER BY ${pagination.sortColumn} ${pagination.order} LIMIT ? OFFSET ?`,
-    [...p, pagination.limit, pagination.offset],
+    `SELECT ${cols} FROM barbeiros b JOIN usuarios u ON u.id=b.usuario_id ${w} ORDER BY ${pagination.sortColumn} ${pagination.order} LIMIT ${pagination.limit} OFFSET ${pagination.offset}`,
+    p,
   );
   return { rows: r, total: n.total };
 }

@@ -112,6 +112,7 @@ test('erro da API é normalizado para apresentação', async () => {
     code: 'VALIDATION_ERROR',
     message: 'Data inválida.',
     details: [],
+    fieldErrors: {},
   });
 });
 

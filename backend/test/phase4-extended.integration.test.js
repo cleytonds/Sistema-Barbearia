@@ -485,7 +485,9 @@ test('jornada respeita funcionamento, pausas e rollback', async () => {
 test('configurações têm exposição, limites, singleton e atualização atômica', async () => {
   const pub = await json(await request('/configuracoes/publicas', { token: null }));
   assert.equal(pub.response.status, 200);
-  assert.equal(pub.value.data.antecedencia_maxima_dias, undefined);
+  assert.equal(pub.value.data.antecedenciaMaximaDias, originalConfig.antecedencia_maxima_dias);
+  assert.match(pub.value.data.agora, /^\d{4}-\d{2}-\d{2}T.*Z$/);
+  assert.equal(pub.value.data.tempo_minimo_cancelamento_horas, undefined);
   const adminRead = await json(await request('/admin/configuracoes'));
   assert.equal(adminRead.response.status, 200);
   assert.ok(adminRead.value.data.antecedencia_maxima_dias);

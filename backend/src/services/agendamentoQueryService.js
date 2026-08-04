@@ -1,6 +1,7 @@
 import { DateTime } from 'luxon';
 import { assertAssignedBarber, assertClientOwner } from '../domain/appointments/permissions.js';
 import { serializeAppointment } from '../domain/appointments/serializers.js';
+import { clientAppointmentPermissions } from '../domain/appointments/clientPermissions.js';
 import * as appointmentRepository from '../repositories/agendamentoRepository.js';
 import * as historyRepository from '../repositories/historicoAgendamentoRepository.js';
 import { AppError } from '../utils/AppError.js';
@@ -40,10 +41,7 @@ function serializeForRole(row, role, settings) {
       origem: row.origem,
     };
   }
-  const deadline =
-    new Date(row.inicio_em).getTime() - settings.tempo_minimo_cancelamento_horas * 3_600_000;
-  const allowed = ['pendente', 'confirmado'].includes(row.status) && Date.now() <= deadline;
-  return { ...serialized, podeCancelar: allowed, podeReagendar: allowed };
+  return { ...serialized, ...clientAppointmentPermissions(row, settings) };
 }
 
 async function list(filters, pagination, role, settings) {
@@ -105,5 +103,6 @@ export async function detail({ id, userId, role }) {
       historico: await historyRepository.listByAppointment(id),
     };
   }
-  return serialized;
+  const settings = await appointmentRepository.findSettings();
+  return { ...serialized, ...clientAppointmentPermissions(appointment, settings) };
 }

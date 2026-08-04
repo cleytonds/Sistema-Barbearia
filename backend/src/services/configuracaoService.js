@@ -4,11 +4,16 @@ import * as operacionalRepository from '../repositories/operacionalRepository.js
 /** Retorna somente os campos operacionais que podem ser expostos sem autenticação. */
 export async function publicConfig() {
   const configuration = await operacionalRepository.config();
+  const now = new Date().toISOString();
   return {
+    nomeBarbearia: configuration.nome_barbearia,
     nome_barbearia: configuration.nome_barbearia,
     telefone: configuration.telefone,
     endereco: configuration.endereco,
+    fusoHorario: configuration.fuso_horario,
     fuso_horario: configuration.fuso_horario,
+    antecedenciaMaximaDias: configuration.antecedencia_maxima_dias,
+    agora: now,
   };
 }
 

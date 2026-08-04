@@ -1,5 +1,39 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { clientAppointmentPermissions } from '../src/domain/appointments/clientPermissions.js';
+
+test('permissões do cliente cobrem prazo e estados terminais', () => {
+  const now = new Date('2030-01-01T10:00:00.000Z');
+  const settings = { tempo_minimo_cancelamento_horas: 2 };
+  for (const status of ['pendente', 'confirmado']) {
+    assert.deepEqual(
+      clientAppointmentPermissions(
+        { status, inicio_em: new Date('2030-01-01T13:00:00.000Z') },
+        settings,
+        now,
+      ),
+      { podeCancelar: true, podeReagendar: true },
+    );
+  }
+  assert.deepEqual(
+    clientAppointmentPermissions(
+      { status: 'pendente', inicio_em: new Date('2030-01-01T11:00:00.000Z') },
+      settings,
+      now,
+    ),
+    { podeCancelar: false, podeReagendar: false },
+  );
+  for (const status of ['cancelado', 'concluido', 'ausente', 'em_atendimento']) {
+    assert.deepEqual(
+      clientAppointmentPermissions(
+        { status, inicio_em: new Date('2030-01-02T13:00:00.000Z') },
+        settings,
+        now,
+      ),
+      { podeCancelar: false, podeReagendar: false },
+    );
+  }
+});
 
 import {
   buildIdempotency,

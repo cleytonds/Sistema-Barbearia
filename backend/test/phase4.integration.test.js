@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 process.env.NODE_ENV = 'test';
 process.env.JWT_SECRET = 'phase4-test-secret-with-at-least-32-characters-123';
@@ -145,11 +146,56 @@ test('criação transacional de barbeiro, vínculo e área própria', async () =
   assert.equal(j.data.length, 1);
   assert.equal((await req('/admin/barbeiros', { token: barberToken })).status, 403);
 });
+test('listagem pública filtra barbeiros por serviço sem duplicar ou expor inativos', async () => {
+  let response = await req('/barbeiros?page=1&limit=1');
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).pagination.limit, 1);
+
+  response = await req(`/barbeiros?servicoId=${serviceId}`);
+  assert.equal(response.status, 200);
+  let payload = await response.json();
+  assert.equal(payload.data.filter((item) => item.id === String(barberId)).length, 1);
+  assert.equal(payload.data[0].email, undefined);
+  assert.equal((await req('/barbeiros?servicoId=abc')).status, 422);
+  assert.equal((await req('/barbeiros?servicoId=999999999')).status, 404);
+
+  await pool.execute('UPDATE servicos SET ativo=FALSE WHERE id=?', [serviceId]);
+  assert.equal((await req(`/barbeiros?servicoId=${serviceId}`)).status, 404);
+  await pool.execute('UPDATE servicos SET ativo=TRUE WHERE id=?', [serviceId]);
+
+  await pool.execute('UPDATE barbeiros SET ativo=FALSE WHERE id=?', [barberId]);
+  payload = await (await req(`/barbeiros?servicoId=${serviceId}`)).json();
+  assert.equal(
+    payload.data.some((item) => item.id === String(barberId)),
+    false,
+  );
+  await pool.execute('UPDATE barbeiros SET ativo=TRUE WHERE id=?', [barberId]);
+
+  await pool.execute('UPDATE usuarios SET ativo=FALSE WHERE id=?', [barberUserId]);
+  payload = await (await req(`/barbeiros?servicoId=${serviceId}`)).json();
+  assert.equal(
+    payload.data.some((item) => item.id === String(barberId)),
+    false,
+  );
+  await pool.execute('UPDATE usuarios SET ativo=TRUE WHERE id=?', [barberUserId]);
+
+  const source = await readFile(
+    new URL('../src/repositories/barbeiroRepository.js', import.meta.url),
+    'utf8',
+  );
+  assert.match(source, /bs\.servico_id=\?/);
+  assert.doesNotMatch(source, /bs\.servico_id=\$\{/);
+});
 test('configurações e horários respeitam exposição e papéis', async () => {
   const pub = await req('/configuracoes/publicas');
   const p = await pub.json();
   assert.equal(pub.status, 200);
-  assert.equal(p.data.antecedencia_maxima_dias, undefined);
+  assert.equal(p.data.nomeBarbearia, p.data.nome_barbearia);
+  assert.equal(p.data.fusoHorario, p.data.fuso_horario);
+  assert.equal(p.data.antecedenciaMaximaDias, 30);
+  assert.match(p.data.agora, /^\d{4}-\d{2}-\d{2}T.*Z$/);
+  assert.equal(p.data.tempo_minimo_cancelamento_horas, undefined);
+  assert.equal(p.data.intervalo_entre_atendimentos_minutos, undefined);
   assert.equal((await req('/admin/configuracoes', { token: clientToken })).status, 403);
   assert.equal((await req('/admin/configuracoes', { token: adminToken })).status, 200);
   assert.equal((await req('/configuracoes/horarios')).status, 200);

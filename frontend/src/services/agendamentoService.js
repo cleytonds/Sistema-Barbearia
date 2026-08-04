@@ -14,6 +14,8 @@ async function request(call, signal) {
 export const agendamentoService = {
   meus: ({ params, signal }) =>
     request(() => api.get('/agendamentos/meus', { params, signal }), signal),
+  getById: (id, { signal } = {}) =>
+    request(() => api.get(`/agendamentos/${id}`, { signal }), signal),
   criar: ({ data, idempotencyKey, signal }) =>
     request(
       () =>

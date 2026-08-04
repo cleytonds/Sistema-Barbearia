@@ -1,4 +1,6 @@
-import { body } from 'express-validator';
+import { body, query } from 'express-validator';
+
+import { MAX_PAGE_SIZE } from '../utils/pagination.js';
 
 const photoUrl = body('foto_url')
   .optional({ nullable: true })
@@ -63,4 +65,13 @@ export const syncServicesValidator = [
     .isArray({ max: 100 })
     .custom((value) => new Set(value.map(String)).size === value.length),
   body('servicoIds.*').isInt({ min: 1 }),
+];
+
+export const publicBarberListValidator = [
+  query('servicoId').optional().isInt({ min: 1 }).toInt(),
+  query('page').optional().isInt({ min: 1 }),
+  query('limit').optional().isInt({ min: 1, max: MAX_PAGE_SIZE }),
+  query('search').optional().isString().trim().isLength({ max: 150 }),
+  query('sort').optional().isIn(['id', 'nome', 'criado_em']),
+  query('order').optional().isIn(['asc', 'desc']),
 ];

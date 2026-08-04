@@ -200,6 +200,10 @@ test('criação cliente é idempotente, preserva snapshots e histórico', async 
   assert.equal(response.headers.get('idempotent-replayed'), 'false');
   const original = (await response.json()).data;
   clientAppointmentId = original.id;
+  const detailResponse = await api(`/agendamentos/${original.id}`, { token: clientToken });
+  const detail = (await detailResponse.json()).data;
+  assert.equal(detail.podeCancelar, true);
+  assert.equal(detail.podeReagendar, true);
   response = await api('/agendamentos', { method: 'POST', token: clientToken, body: payload, key });
   assert.equal(response.status, 200);
   assert.equal(response.headers.get('idempotent-replayed'), 'true');
@@ -242,6 +246,12 @@ test('mass assignment é rejeitado e listagens respeitam propriedade', async () 
   const mineBody = await mine.json();
   assert.ok(mineBody.data.length >= 1);
   assert.equal(typeof mineBody.data[0].podeCancelar, 'boolean');
+  const listed = mineBody.data.find((item) => item.id === clientAppointmentId);
+  const detail = (
+    await (await api(`/agendamentos/${clientAppointmentId}`, { token: clientToken })).json()
+  ).data;
+  assert.equal(detail.podeCancelar, listed.podeCancelar);
+  assert.equal(detail.podeReagendar, listed.podeReagendar);
   const others = await api('/agendamentos/meus', { token: otherClientToken });
   assert.equal((await others.json()).data.length, 0);
 });
@@ -319,6 +329,11 @@ test('status, cancelamento e histórico respeitam o fluxo autorizado', async () 
   });
   assert.equal(response.status, 200);
   assert.equal((await response.json()).data.status, 'cancelado');
+  const cancelledDetail = (
+    await (await api(`/agendamentos/${clientAppointmentId}`, { token: clientToken })).json()
+  ).data;
+  assert.equal(cancelledDetail.podeCancelar, false);
+  assert.equal(cancelledDetail.podeReagendar, false);
   response = await api(`/admin/agendamentos/${adminAppointmentId}/cancelar`, {
     method: 'PUT',
     token: adminToken,

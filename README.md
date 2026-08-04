@@ -180,4 +180,25 @@ mecanismos distintos. O backend é a autoridade para limites e validações dess
 
 ## Screenshots
 
+## Interface do cliente — Fase 7
+
+A SPA oferece as rotas públicas `/`, `/login`, `/cadastro`, `/esqueci-senha`,
+`/redefinir-senha` e `/agendar`. As rotas `/agendamento/sucesso/:id`,
+`/meus-agendamentos` e `/agendamentos/:id` são exclusivas do cliente autenticado.
+
+O fluxo segue serviço, profissional, data, horário e resumo. Um rascunho versionado, sem token,
+preço ou duração, permanece por 30 minutos no `sessionStorage`. O backend continua sendo a
+autoridade para preço, disponibilidade e permissões de cancelamento e reagendamento.
+
+A identidade usa preto, grafite e dourado por design tokens. A logo oficial está centralizada em
+`frontend/src/assets/brand/elite-barbearia-081-logo.jpg` e é reutilizada pelo componente
+`BrandMark`, com dimensões explícitas, texto alternativo e fallback textual.
+
+A interface é mobile-first, possui skip link, foco visível, labels associados, feedback por
+`aria-live`, redução de movimento e diálogos acessíveis. As larguras-alvo de inspeção manual são
+320, 360, 375, 390, 768, 1024 e 1366 px. Testes frontend usam Testing Library, user-event, jsdom
+e axe-core sobre `node:test`, sem rede real.
+
+Instagram oficial: [@barbeariaelite081](https://www.instagram.com/barbeariaelite081/).
+
 Adicionar imagens após a implementação das páginas públicas e dos painéis.

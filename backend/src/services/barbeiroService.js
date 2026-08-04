@@ -1,6 +1,7 @@
 import { hashPassword } from '../auth/password.js';
 import { pool } from '../config/database.js';
 import * as barbeiroRepository from '../repositories/barbeiroRepository.js';
+import * as servicoRepository from '../repositories/servicoRepository.js';
 import { AppError } from '../utils/AppError.js';
 import { normalizeEmail, normalizeName, normalizePhone } from '../utils/normalize.js';
 import { paginationResult, parsePagination } from '../utils/pagination.js';
@@ -19,11 +20,19 @@ function toPublicBarber(barber) {
 
 /** Lista barbeiros com paginação e exposição adequada ao contexto público. */
 export async function list(query, publicOnly) {
+  const serviceId = publicOnly && query.servicoId ? Number(query.servicoId) : null;
+  if (serviceId) {
+    const service = await servicoRepository.findService(serviceId);
+    if (!service?.ativo) {
+      throw new AppError('ServiÃ§o nÃ£o encontrado.', 404, 'SERVICE_NOT_FOUND');
+    }
+  }
   const pagination = parsePagination(query, allowedSorts, 'nome');
   const result = await barbeiroRepository.listBarbers({
     publicOnly,
     search: query.search?.trim() ?? '',
     ativo: query.ativo,
+    serviceId,
     pagination,
   });
   const rows = publicOnly ? result.rows.map(toPublicBarber) : result.rows;

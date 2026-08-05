@@ -5,6 +5,7 @@ import * as servicoRepository from '../repositories/servicoRepository.js';
 import { AppError } from '../utils/AppError.js';
 import { normalizeEmail, normalizeName, normalizePhone } from '../utils/normalize.js';
 import { paginationResult, parsePagination } from '../utils/pagination.js';
+import { grantRole } from '../repositories/roleRepository.js';
 
 const allowedSorts = { id: 'b.id', nome: 'u.nome', criado_em: 'b.criado_em' };
 
@@ -108,6 +109,7 @@ export async function create(data) {
         data.especialidades?.trim() || null,
       ],
     );
+    await grantRole(userResult.insertId, 'barbeiro', connection);
     await connection.commit();
     return barbeiroRepository.findBarber(barberResult.insertId);
   } catch (error) {

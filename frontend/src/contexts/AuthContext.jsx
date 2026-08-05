@@ -3,6 +3,11 @@ import { authService } from '../services/authService.js';
 import { authStorage } from '../utils/authStorage.js';
 
 export const AuthContext = createContext(null);
+const validRoles = new Set(['cliente', 'barbeiro', 'admin']);
+export function normalizeRoles(usuario) {
+  const roles = Array.isArray(usuario?.papeis) ? usuario.papeis : [usuario?.perfil];
+  return [...new Set(roles.filter((role) => validRoles.has(role)))];
+}
 
 export function AuthProvider({ children }) {
   const [usuario, setUsuario] = useState(null);
@@ -82,9 +87,12 @@ export function AuthProvider({ children }) {
     [applySession],
   );
 
-  const value = useMemo(
-    () => ({
+  const value = useMemo(() => {
+    const papeis = normalizeRoles(usuario);
+    return {
       usuario,
+      papeis,
+      papelPrincipal: usuario?.papelPrincipal ?? usuario?.perfil ?? null,
       token,
       loading,
       isAuthenticated: Boolean(usuario && token),
@@ -95,9 +103,10 @@ export function AuthProvider({ children }) {
       changePassword,
       forgotPassword: authService.forgotPassword,
       resetPassword: authService.resetPassword,
-    }),
-    [usuario, token, loading, initialize, login, logout, register, changePassword],
-  );
+      hasRole: (role) => papeis.includes(role),
+      hasAnyRole: (roles) => roles.some((role) => papeis.includes(role)),
+    };
+  }, [usuario, token, loading, initialize, login, logout, register, changePassword]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

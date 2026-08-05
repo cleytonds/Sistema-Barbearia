@@ -33,12 +33,19 @@ export async function register(input) {
     throw new AppError('E-mail ou telefone já cadastrado.', 409, 'USER_ALREADY_EXISTS');
   }
   data.passwordHash = await hashPassword(input.senha);
+  const connection = await pool.getConnection();
   try {
-    return sessionFor(await createClient(data));
+    await connection.beginTransaction();
+    const user = await createClient(data, connection);
+    await connection.commit();
+    return sessionFor(user);
   } catch (error) {
+    await connection.rollback();
     if (error.code === 'ER_DUP_ENTRY')
       throw new AppError('E-mail ou telefone já cadastrado.', 409, 'USER_ALREADY_EXISTS');
     throw error;
+  } finally {
+    connection.release();
   }
 }
 

@@ -1,4 +1,5 @@
 import { pool } from '../config/database.js';
+import { grantRole, listUserRoles } from './roleRepository.js';
 
 const publicColumns =
   'id, nome, email, telefone, perfil, ativo, auth_versao, criado_em, atualizado_em';
@@ -8,7 +9,9 @@ export async function findUserByEmail(email, connection = pool) {
     `SELECT ${publicColumns}, senha_hash FROM usuarios WHERE email = ? LIMIT 1`,
     [email],
   );
-  return row ?? null;
+  if (!row) return null;
+  row.papeis = await listUserRoles(row.id, connection);
+  return row;
 }
 
 export async function findUserById(id, connection = pool, forUpdate = false) {
@@ -16,7 +19,9 @@ export async function findUserById(id, connection = pool, forUpdate = false) {
     `SELECT ${publicColumns}, senha_hash FROM usuarios WHERE id = ? LIMIT 1${forUpdate ? ' FOR UPDATE' : ''}`,
     [id],
   );
-  return row ?? null;
+  if (!row) return null;
+  row.papeis = await listUserRoles(row.id, connection);
+  return row;
 }
 
 export async function findUserConflict(email, phone, connection = pool) {
@@ -33,6 +38,7 @@ export async function createClient({ name, email, phone, passwordHash }, connect
      VALUES (?, ?, ?, ?, 'cliente', TRUE)`,
     [name, email, phone, passwordHash],
   );
+  await grantRole(result.insertId, 'cliente', connection);
   return findUserById(result.insertId, connection);
 }
 
@@ -43,5 +49,7 @@ export function toPublicUser(user) {
     email: user.email,
     telefone: user.telefone,
     perfil: user.perfil,
+    papelPrincipal: user.perfil,
+    papeis: user.papeis ?? [user.perfil],
   };
 }

@@ -25,9 +25,19 @@ const { api } = await import('../src/api/client.js');
 const { authStorage } = await import('../src/utils/authStorage.js');
 test.afterEach(cleanup);
 function auth(value, children) {
+  const roles = value.usuario?.papeis ?? [value.usuario?.perfil].filter(Boolean);
   return React.createElement(
     AuthContext.Provider,
-    { value: { loading: false, isAuthenticated: true, logout: async () => {}, ...value } },
+    {
+      value: {
+        loading: false,
+        isAuthenticated: true,
+        logout: async () => {},
+        hasRole: (role) => roles.includes(role),
+        hasAnyRole: (expected) => expected.some((role) => roles.includes(role)),
+        ...value,
+      },
+    },
     children,
   );
 }

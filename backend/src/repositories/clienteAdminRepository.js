@@ -4,7 +4,8 @@ export async function list({ search, pagination }, db = pool) {
   const emailTerm = `%${search.trim().toLowerCase()}%`;
   const phoneTerm = `%${search.replace(/\D/g, '')}%`;
   const params = [nameTerm, emailTerm, phoneTerm];
-  const where = "perfil='cliente' AND (nome LIKE ? OR email LIKE ? OR telefone LIKE ?)";
+  const where = `EXISTS (SELECT 1 FROM usuario_papeis up INNER JOIN papeis p ON p.id=up.papel_id
+    WHERE up.usuario_id=usuarios.id AND p.nome='cliente') AND (nome LIKE ? OR email LIKE ? OR telefone LIKE ?)`;
   const [[count]] = await db.execute(`SELECT COUNT(*) total FROM usuarios WHERE ${where}`, params);
   const [rows] = await db.execute(
     `SELECT id,nome,email,telefone,ativo FROM usuarios WHERE ${where} ORDER BY nome ASC LIMIT ${pagination.limit} OFFSET ${pagination.offset}`,
@@ -14,7 +15,9 @@ export async function list({ search, pagination }, db = pool) {
 }
 export async function find(id, db = pool) {
   const [[row]] = await db.execute(
-    "SELECT id,nome,email,telefone,ativo FROM usuarios WHERE id=? AND perfil='cliente'",
+    `SELECT u.id,u.nome,u.email,u.telefone,u.ativo FROM usuarios u
+     WHERE u.id=? AND EXISTS (SELECT 1 FROM usuario_papeis up INNER JOIN papeis p ON p.id=up.papel_id
+       WHERE up.usuario_id=u.id AND p.nome='cliente')`,
     [id],
   );
   return row ?? null;

@@ -14,6 +14,7 @@ const { pool } = await import('../src/config/database.js');
 const { issueAccessToken } = await import('../src/auth/jwtIssuer.js');
 const { hashPassword } = await import('../src/auth/password.js');
 const barberService = await import('../src/services/barbeiroService.js');
+const { grantRole } = await import('../src/repositories/roleRepository.js');
 
 const key = randomUUID().replaceAll('-', '').slice(0, 12);
 const prefix = `F4X-${key}`;
@@ -83,6 +84,7 @@ test.before(async () => {
       'INSERT INTO usuarios(nome,email,telefone,senha_hash,perfil) VALUES(?,?,?,?,?)',
       [name, email, phone(n), hash, profile],
     );
+    await grantRole(result.insertId, profile);
     ids.users.push(result.insertId);
     if (profile === 'admin') admin = { id: result.insertId, auth_versao: 1 };
     else client = { id: result.insertId };

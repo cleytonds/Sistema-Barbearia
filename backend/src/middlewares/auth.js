@@ -28,7 +28,15 @@ export const auth = () =>
     }
     req.auth = {
       token: { jti: payload.jti, exp: payload.exp, versao: payload.ver },
-      usuario: { id: user.id, nome: user.nome, perfil: user.perfil },
+      usuario: {
+        id: user.id,
+        nome: user.nome,
+        perfil: user.perfil,
+        papelPrincipal: user.perfil,
+        papeis: user.papeis,
+      },
     };
+    if (!user.papeis.length)
+      throw new AppError('Sessão sem papel autorizado.', 401, 'SESSION_REVOKED');
     next();
   });

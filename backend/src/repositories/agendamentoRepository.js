@@ -40,7 +40,10 @@ export async function findByIdempotency({ actorId, origin, keyHash }, connection
 
 export async function findActiveClient(id, connection = pool) {
   const [[row]] = await connection.execute(
-    `SELECT id FROM usuarios WHERE id = ? AND perfil = 'cliente' AND ativo = TRUE LIMIT 1`,
+    `SELECT u.id FROM usuarios u
+     INNER JOIN usuario_papeis up ON up.usuario_id=u.id
+     INNER JOIN papeis p ON p.id=up.papel_id AND p.nome='cliente'
+     WHERE u.id = ? AND u.ativo = TRUE LIMIT 1`,
     [id],
   );
   return row ?? null;

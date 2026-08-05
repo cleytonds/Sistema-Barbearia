@@ -9,7 +9,7 @@ const migrationDirectory = path.join(backendRoot, 'src', 'database', 'migrations
 
 test('migrations possuem ordem, nome único e um CREATE TABLE cada', async () => {
   const files = (await readdir(migrationDirectory)).filter((file) => file.endsWith('.sql')).sort();
-  assert.equal(files.length, 14);
+  assert.equal(files.length, 15);
   assert.equal(new Set(files).size, files.length);
   assert.deepEqual(
     files.map((file) => file.slice(0, 3)),
@@ -41,8 +41,11 @@ test('schema contém todas as tabelas de domínio aprovadas', async () => {
     'historico_agendamentos',
     'tokens_recuperacao_senha',
     'configuracoes',
+    'papeis',
+    'usuario_papeis',
   ];
-  for (const table of tables) assert.match(schema, new RegExp(`CREATE TABLE ${table}\\b`, 'i'));
+  for (const table of tables)
+    assert.match(schema, new RegExp(`CREATE TABLE (?:IF NOT EXISTS )?${table}\\b`, 'i'));
   assert.match(schema, /DECIMAL\(10,2\)/);
   assert.match(schema, /DATETIME\(6\)/);
   assert.match(schema, /FOREIGN KEY/);

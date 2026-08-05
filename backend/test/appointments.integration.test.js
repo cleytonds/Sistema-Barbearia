@@ -14,6 +14,7 @@ const { issueAccessToken } = await import('../src/auth/jwtIssuer.js');
 const { hashPassword } = await import('../src/auth/password.js');
 const { pool } = await import('../src/config/database.js');
 const appointmentService = await import('../src/services/agendamentoService.js');
+const { grantRole } = await import('../src/repositories/roleRepository.js');
 
 const marker = `F6-${randomUUID().slice(0, 8)}`;
 const zone = 'America/Recife';
@@ -62,6 +63,7 @@ async function addUser(profile, suffix) {
       profile,
     ],
   );
+  await grantRole(result.insertId, profile);
   const [[user]] = await pool.execute('SELECT id,auth_versao FROM usuarios WHERE id=?', [
     result.insertId,
   ]);

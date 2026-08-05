@@ -11,6 +11,7 @@ const { app } = await import('../src/app.js');
 const { pool } = await import('../src/config/database.js');
 const { issueAccessToken } = await import('../src/auth/jwtIssuer.js');
 const { hashPassword } = await import('../src/auth/password.js');
+const { grantRole } = await import('../src/repositories/roleRepository.js');
 const key = randomUUID().replaceAll('-', '').slice(0, 10),
   serviceName = `Serviço Fase4 ${key}`,
   barberEmail = `barber-${key}@example.com`,
@@ -46,6 +47,7 @@ test.before(async () => {
       'INSERT INTO usuarios(nome,email,telefone,senha_hash,perfil)VALUES(?,?,?,?,?)',
       [`Teste ${profile}`, email, `81${Math.random().toString().slice(2, 11)}`, h, profile],
     );
+    await grantRole(r.insertId, profile);
     if (profile === 'admin') adminId = r.insertId;
     else clientId = r.insertId;
   }

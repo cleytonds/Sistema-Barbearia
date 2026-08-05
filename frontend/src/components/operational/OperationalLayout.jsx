@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { BrandMark } from '../brand/BrandMark.jsx';
 import { useAuth } from '../../hooks/useAuth.js';
 
@@ -22,7 +22,7 @@ export function OperationalLayout({ area, links }) {
   const [open, setOpen] = useState(false);
   const trigger = useRef(null);
   const drawer = useRef(null);
-  const { usuario, logout } = useAuth();
+  const { usuario, logout, hasRole } = useAuth();
   const navigate = useNavigate();
   useEffect(() => {
     if (!open) return undefined;
@@ -57,6 +57,14 @@ export function OperationalLayout({ area, links }) {
       <BrandMark variant="header" />
       <p className="operational-role">{area}</p>
       <Navigation links={links} close={() => setOpen(false)} />
+      {hasRole('barbeiro') && hasRole('admin') && (
+        <Link
+          className="button button--secondary"
+          to={area === 'Administração' ? '/barbeiro' : '/admin'}
+        >
+          {area === 'Administração' ? 'Ir para minha agenda' : 'Ir para o painel administrativo'}
+        </Link>
+      )}
       <button className="button button--secondary" onClick={leave}>
         Sair
       </button>

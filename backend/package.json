@@ -11,7 +11,8 @@
     "migrate": "node src/database/migrate.js up",
     "migrate:status": "node src/database/migrate.js status",
     "seed": "node src/database/seeds/run.js",
-    "admin:create": "node src/database/scripts/createAdmin.js"
+    "admin:create": "node src/database/scripts/createAdmin.js",
+    "role:grant": "node src/database/scripts/grantRole.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",

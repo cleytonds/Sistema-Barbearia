@@ -1,5 +1,6 @@
 import bcrypt from 'bcryptjs';
 import { pool } from '../../config/database.js';
+import { grantRole } from '../../repositories/roleRepository.js';
 
 function required(name) {
   const value = process.env[name]?.trim();
@@ -43,6 +44,7 @@ async function main() {
        VALUES (?, ?, ?, ?, 'admin', TRUE)`,
       [name, email, phone, passwordHash],
     );
+    await grantRole(result.insertId, 'admin', connection);
     await connection.commit();
     console.log(`[admin] administrador criado com id ${result.insertId}.`);
   } catch (error) {

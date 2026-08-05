@@ -16,6 +16,7 @@ const MyAppointmentsPage = lazy(() => import('../pages/MyAppointmentsPage.jsx'))
 const AppointmentDetailsPage = lazy(() => import('../pages/AppointmentDetailsPage.jsx'));
 const NotFoundPage = lazy(() => import('../pages/NotFoundPage.jsx'));
 const AccessDeniedPage = lazy(() => import('../pages/AccessDeniedPage.jsx'));
+const AreaSelectionPage = lazy(() => import('../pages/AreaSelectionPage.jsx'));
 const BarberDashboardPage = lazy(() => import('../pages/barber/BarberDashboardPage.jsx'));
 const BarberAgendaPage = lazy(() => import('../pages/barber/BarberAgendaPage.jsx'));
 const BarberAppointmentDetailsPage = lazy(
@@ -69,6 +70,7 @@ export function AppRoutes() {
             <Route path="/esqueci-senha" element={<ForgotPasswordPage />} />
           </Route>
           <Route element={<ProtectedRoute />}>
+            <Route path="/selecionar-area" element={<AreaSelectionPage />} />
             <Route element={<RoleRoute roles={['cliente']} />}>
               <Route path="/agendamento/sucesso/:id" element={<ScheduleSuccessPage />} />
               <Route path="/meus-agendamentos" element={<MyAppointmentsPage />} />

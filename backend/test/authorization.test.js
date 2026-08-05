@@ -7,9 +7,9 @@ import {
   requireRoles,
 } from '../src/middlewares/authorize.js';
 
-function execute(middleware, profile) {
+function execute(middleware, ...roles) {
   return new Promise((resolve) => {
-    const req = profile ? { auth: { usuario: { perfil: profile } } } : {};
+    const req = roles.length ? { auth: { usuario: { papeis: roles } } } : {};
     middleware(req, {}, (error) => resolve(error ?? null));
   });
 }
@@ -20,5 +20,6 @@ test('middlewares de perfil permitem apenas os papéis configurados', async () =
   assert.equal(await execute(requireBarbeiro(), 'barbeiro'), null);
   assert.equal(await execute(requireCliente(), 'cliente'), null);
   assert.equal(await execute(requireRoles('admin', 'barbeiro'), 'barbeiro'), null);
-  assert.equal((await execute(requireCliente(), null)).statusCode, 401);
+  assert.equal(await execute(requireAdmin(), 'barbeiro', 'admin'), null);
+  assert.equal((await execute(requireCliente())).statusCode, 401);
 });

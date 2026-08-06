@@ -1,13 +1,10 @@
 import { createContext, useCallback, useEffect, useMemo, useState } from 'react';
 import { authService } from '../services/authService.js';
 import { authStorage } from '../utils/authStorage.js';
+import { normalizeRoles } from '../routes/routeSecurity.js';
 
 export const AuthContext = createContext(null);
-const validRoles = new Set(['cliente', 'barbeiro', 'admin']);
-export function normalizeRoles(usuario) {
-  const roles = Array.isArray(usuario?.papeis) ? usuario.papeis : [usuario?.perfil];
-  return [...new Set(roles.filter((role) => validRoles.has(role)))];
-}
+export { normalizeRoles } from '../routes/routeSecurity.js';
 
 export function AuthProvider({ children }) {
   const [usuario, setUsuario] = useState(null);
@@ -21,6 +18,10 @@ export function AuthProvider({ children }) {
   }, []);
 
   const applySession = useCallback((session) => {
+    if (!session?.accessToken || normalizeRoles(session.usuario).length === 0) {
+      authStorage.clear();
+      throw new Error('Sessão autenticada inconsistente.');
+    }
     authStorage.setToken(session.accessToken);
     setToken(session.accessToken);
     setUsuario(session.usuario);
@@ -37,6 +38,8 @@ export function AuthProvider({ children }) {
     setToken(storedToken);
     try {
       const response = await authService.me();
+      if (normalizeRoles(response.usuario).length === 0)
+        throw new Error('Sessão autenticada inconsistente.');
       setUsuario(response.usuario);
     } catch {
       clearSession();

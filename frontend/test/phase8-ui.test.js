@@ -147,7 +147,7 @@ test('AccessDeniedPage orienta retorno para a área do perfil', () => {
   );
   assert.ok(screen.getByRole('heading', { name: 'Acesso negado' }));
   assert.equal(
-    screen.getByRole('link', { name: 'Voltar para minha área' }).getAttribute('href'),
+    screen.getByRole('link', { name: 'Voltar para a área do barbeiro' }).getAttribute('href'),
     '/barbeiro',
   );
 });

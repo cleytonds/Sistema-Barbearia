@@ -32,10 +32,11 @@ const publicLinks = [
   ['/', 'Início'],
   ['/#servicos', 'Serviços'],
   ['/#profissionais', 'Barbeiros'],
+  ['/planos', 'Planos'],
 ];
 function Navigation({ isClient = false, onNavigate }) {
   const links = isClient
-    ? [...publicLinks, ['/meus-agendamentos', 'Meus agendamentos']]
+    ? [...publicLinks, ['/meus-agendamentos', 'Meus agendamentos'], ['/meu-plano', 'Meu plano']]
     : publicLinks;
   return (
     <nav aria-label="Navegação principal" className="cluster">
@@ -194,8 +195,10 @@ export function Footer() {
           <Link to="/">Início</Link>
           <Link to="/#servicos">Serviços</Link>
           <Link to="/#profissionais">Barbeiros</Link>
+          <Link to="/planos">Planos</Link>
           <Link to="/agendar">Agendar horário</Link>
           <Link to="/meus-agendamentos">Meus agendamentos</Link>
+          <Link to="/meu-plano">Meu plano</Link>
         </nav>
         <section className="footer-section" aria-labelledby="footer-contact-title">
           <h2 id="footer-contact-title">Contato</h2>

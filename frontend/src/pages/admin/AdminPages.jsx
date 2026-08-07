@@ -15,10 +15,12 @@ import {
 import { useDocumentTitle } from '../../hooks/useDocumentTitle.js';
 import { useRemoteData } from '../../hooks/useRemoteData.js';
 import { adminService } from '../../services/adminService.js';
+import { adminPlanoService } from '../../services/planoService.js';
 import { servicoService } from '../../services/servicoService.js';
 import { barbeiroService } from '../../services/barbeiroService.js';
 import { operacionalService } from '../../services/operacionalService.js';
 import { getDisponibilidade } from '../../services/disponibilidadeService.js';
+import { subscriptionStatus, usoStatus } from '../../utils/planStatus.js';
 const today = () => new Date().toISOString().slice(0, 10);
 const msg = (error) =>
   error.response?.data?.error?.message ?? 'Não foi possível concluir a operação.';
@@ -821,6 +823,578 @@ export function AdminBarberDetailsPage() {
           <Link to={`/admin/jornadas?barbeiroId=${id}`}>Editar jornada</Link>
         </>
       )}
+    </>
+  );
+}
+
+function AdminPlansPage() {
+  useDocumentTitle('Planos');
+  const [search, setSearch] = useState(''),
+    [page, setPage] = useState(1),
+    [editing, setEditing] = useState(null),
+    [dialog, setDialog] = useState(null),
+    [motivo, setMotivo] = useState(''),
+    [error, setError] = useState(''),
+    [form, setForm] = useState({
+      nome: '',
+      descricao: '',
+      preco: '',
+      adesaoInicio: '',
+      adesaoFim: '',
+      utilizacaoInicio: '',
+      utilizacaoFim: '',
+      possuiLimiteSemanal: false,
+      limiteSemanal: '',
+      possuiLimiteTotal: false,
+      limiteTotal: '',
+      ativo: true,
+      adesoesAbertas: true,
+      servicos: [],
+      barbeiros: [],
+    });
+  const state = useRemoteData(
+    () => adminPlanoService.listPlanos({ search, page, limit: 20, ativo: 'all' }),
+    [search, page],
+  );
+  const services = useRemoteData(() => servicoService.listPublic({ limit: 100 }), []),
+    barbers = useRemoteData(() => barbeiroService.listPublic({ limit: 100 }), []);
+  function edit(item) {
+    setEditing(item);
+    setError('');
+    setForm({
+      nome: item.nome,
+      descricao: item.descricao ?? '',
+      preco: item.preco,
+      adesaoInicio: item.adesao_inicio,
+      adesaoFim: item.adesao_fim,
+      utilizacaoInicio: item.utilizacao_inicio,
+      utilizacaoFim: item.utilizacao_fim,
+      possuiLimiteSemanal: Boolean(item.possui_limite_semanal),
+      limiteSemanal: item.limite_semanal ?? '',
+      possuiLimiteTotal: Boolean(item.possui_limite_total),
+      limiteTotal: item.limite_total ?? '',
+      ativo: Boolean(item.ativo),
+      adesoesAbertas: Boolean(item.adesoes_abertas),
+      servicos: (item.servicos ?? []).map((s) => String(s.id)),
+      barbeiros: (item.barbeiros ?? []).map((b) => String(b.id)),
+    });
+  }
+  function newPlan() {
+    setEditing({});
+    setError('');
+    setForm({
+      nome: '',
+      descricao: '',
+      preco: '',
+      adesaoInicio: '',
+      adesaoFim: '',
+      utilizacaoInicio: '',
+      utilizacaoFim: '',
+      possuiLimiteSemanal: false,
+      limiteSemanal: '',
+      possuiLimiteTotal: false,
+      limiteTotal: '',
+      ativo: true,
+      adesoesAbertas: true,
+      servicos: [],
+      barbeiros: [],
+    });
+  }
+  function toggleService(id) {
+    setForm((f) => ({
+      ...f,
+      servicos: f.servicos.includes(String(id))
+        ? f.servicos.filter((x) => x !== String(id))
+        : [...f.servicos, String(id)],
+    }));
+  }
+  function toggleBarber(id) {
+    setForm((f) => ({
+      ...f,
+      barbeiros: f.barbeiros.includes(String(id))
+        ? f.barbeiros.filter((x) => x !== String(id))
+        : [...f.barbeiros, String(id)],
+    }));
+  }
+  async function save(e) {
+    e.preventDefault();
+    try {
+      const payload = {
+        ...form,
+        preco: String(form.preco),
+        limiteSemanal: form.possuiLimiteSemanal ? Number(form.limiteSemanal) : null,
+        limiteTotal: form.possuiLimiteTotal ? Number(form.limiteTotal) : null,
+        servicos: form.servicos.map(Number),
+        barbeiros: form.barbeiros.map(Number),
+      };
+      if (editing.id) await adminPlanoService.updatePlan(editing.id, payload);
+      else await adminPlanoService.createPlan(payload);
+      setEditing(null);
+      state.reload();
+    } catch (e2) {
+      setError(msg(e2));
+    }
+  }
+  async function act() {
+    if (!editing) return;
+    try {
+      if (dialog === 'ativar') await adminPlanoService.updatePlanStatus(editing.id, 'ativar');
+      else if (dialog === 'desativar')
+        await adminPlanoService.updatePlanStatus(editing.id, 'desativar');
+      else if (dialog === 'abrir')
+        await adminPlanoService.updatePlanStatus(editing.id, 'abrir_adesoes');
+      else if (dialog === 'fechar')
+        await adminPlanoService.updatePlanStatus(editing.id, 'fechar_adesoes');
+      else if (dialog === 'permitir')
+        await adminPlanoService.updatePlanStatus(editing.id, 'permitir_uso');
+      else if (dialog === 'suspender')
+        await adminPlanoService.updatePlanStatus(editing.id, 'suspender_uso', motivo.trim());
+      setDialog(null);
+      setMotivo('');
+      setError('');
+      state.reload();
+    } catch (e2) {
+      setError(msg(e2));
+    }
+  }
+  return (
+    <>
+      <PageHeader title="Planos" actions={<Button onClick={newPlan}>Novo plano</Button>} />
+      <Input
+        label="Pesquisar"
+        value={search}
+        onChange={(e) => {
+          setSearch(e.target.value);
+          setPage(1);
+        }}
+      />
+      {state.loading ? (
+        <Skeleton />
+      ) : (
+        <DataTable
+          caption="Planos"
+          rows={state.data?.data ?? []}
+          columns={[
+            { key: 'nome', label: 'Nome' },
+            { key: 'preco', label: 'Preço' },
+            {
+              key: 'adhoc_status',
+              label: 'Estado',
+              render: (r) => (r.ativo ? 'Ativo' : 'Inativo'),
+            },
+            {
+              key: 'uso',
+              label: 'Uso',
+              render: (r) => (
+                <Badge tone={usoStatus(r.uso_status).tone}>{usoStatus(r.uso_status).label}</Badge>
+              ),
+            },
+          ]}
+          renderActions={(r) => (
+            <div className="cluster">
+              <Button variant="secondary" onClick={() => edit(r)}>
+                Editar
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  edit(r);
+                  setDialog(r.ativo ? 'desativar' : 'ativar');
+                }}
+              >
+                {r.ativo ? 'Desativar' : 'Ativar'}
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  edit(r);
+                  setDialog(r.adesoes_abertas ? 'fechar' : 'abrir');
+                }}
+              >
+                {r.adesoes_abertas ? 'Fechar adesões' : 'Abrir adesões'}
+              </Button>
+              {r.uso_status === 'suspenso' ? (
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    edit(r);
+                    setDialog('permitir');
+                  }}
+                >
+                  Permitir uso
+                </Button>
+              ) : (
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    edit(r);
+                    setDialog('suspender');
+                    setMotivo('');
+                  }}
+                >
+                  Suspender uso
+                </Button>
+              )}
+            </div>
+          )}
+        />
+      )}
+      <Pagination
+        page={state.data?.pagination?.page ?? 1}
+        totalPages={state.data?.pagination?.totalPages ?? 1}
+        onChange={setPage}
+      />
+      <Dialog
+        open={Boolean(editing)}
+        onClose={() => setEditing(null)}
+        title={editing?.id ? 'Editar plano' : 'Novo plano'}
+      >
+        <form className="form" onSubmit={save}>
+          <Input
+            label="Nome"
+            required
+            value={form.nome}
+            onChange={(e) => setForm({ ...form, nome: e.target.value })}
+          />
+          <Textarea
+            label="Descrição"
+            value={form.descricao}
+            onChange={(e) => setForm({ ...form, descricao: e.target.value })}
+          />
+          <Input
+            label="Preço"
+            required
+            inputMode="decimal"
+            value={form.preco}
+            onChange={(e) => setForm({ ...form, preco: e.target.value })}
+          />
+          <div className="cluster">
+            <Input
+              label="Adesão início"
+              type="date"
+              required
+              value={form.adesaoInicio}
+              onChange={(e) => setForm({ ...form, adesaoInicio: e.target.value })}
+            />
+            <Input
+              label="Adesão fim"
+              type="date"
+              required
+              value={form.adesaoFim}
+              onChange={(e) => setForm({ ...form, adesaoFim: e.target.value })}
+            />
+          </div>
+          <div className="cluster">
+            <Input
+              label="Utilização início"
+              type="date"
+              required
+              value={form.utilizacaoInicio}
+              onChange={(e) => setForm({ ...form, utilizacaoInicio: e.target.value })}
+            />
+            <Input
+              label="Utilização fim"
+              type="date"
+              required
+              value={form.utilizacaoFim}
+              onChange={(e) => setForm({ ...form, utilizacaoFim: e.target.value })}
+            />
+          </div>
+          <label className="cluster">
+            <input
+              type="checkbox"
+              checked={form.possuiLimiteSemanal}
+              onChange={(e) => setForm({ ...form, possuiLimiteSemanal: e.target.checked })}
+            />
+            Tem limite semanal
+          </label>
+          {form.possuiLimiteSemanal && (
+            <Input
+              label="Limite semanal"
+              type="number"
+              min="1"
+              value={form.limiteSemanal}
+              onChange={(e) => setForm({ ...form, limiteSemanal: e.target.value })}
+            />
+          )}
+          <label className="cluster">
+            <input
+              type="checkbox"
+              checked={form.possuiLimiteTotal}
+              onChange={(e) => setForm({ ...form, possuiLimiteTotal: e.target.checked })}
+            />
+            Tem limite total
+          </label>
+          {form.possuiLimiteTotal && (
+            <Input
+              label="Limite total"
+              type="number"
+              min="1"
+              value={form.limiteTotal}
+              onChange={(e) => setForm({ ...form, limiteTotal: e.target.value })}
+            />
+          )}
+          <fieldset className="card">
+            <legend>Serviços incluídos</legend>
+            {(services.data?.data ?? []).map((s) => (
+              <label key={s.id} className="cluster">
+                <input
+                  type="checkbox"
+                  checked={form.servicos.includes(String(s.id))}
+                  onChange={() => toggleService(s.id)}
+                />
+                {s.nome}
+              </label>
+            ))}
+          </fieldset>
+          <fieldset className="card">
+            <legend>Profissionais</legend>
+            {(barbers.data?.data ?? []).map((b) => (
+              <label key={b.id} className="cluster">
+                <input
+                  type="checkbox"
+                  checked={form.barbeiros.includes(String(b.id))}
+                  onChange={() => toggleBarber(b.id)}
+                />
+                {b.nome}
+              </label>
+            ))}
+          </fieldset>
+          {error && <Alert type="error">{error}</Alert>}
+          <Button type="submit">Salvar</Button>
+        </form>
+      </Dialog>
+      <Dialog open={Boolean(dialog)} onClose={() => setDialog(null)} title="Confirmar operação">
+        <div className="stack">
+          {dialog === 'suspender' && (
+            <Input
+              label="Motivo da suspensão"
+              required
+              value={motivo}
+              onChange={(e) => setMotivo(e.target.value)}
+            />
+          )}
+          {error && <Alert type="error">{error}</Alert>}
+          <div className="cluster">
+            <Button
+              variant="danger"
+              onClick={act}
+              disabled={dialog === 'suspender' && !motivo.trim()}
+            >
+              Confirmar
+            </Button>
+            <Button variant="secondary" onClick={() => setDialog(null)}>
+              Voltar
+            </Button>
+          </div>
+        </div>
+      </Dialog>
+    </>
+  );
+}
+
+function AdminSubscriptionsPage() {
+  useDocumentTitle('Assinaturas');
+  const [page, setPage] = useState(1),
+    [selected, setSelected] = useState(null),
+    [dialog, setDialog] = useState(null),
+    [motivo, setMotivo] = useState(''),
+    [error, setError] = useState(''),
+    [creating, setCreating] = useState(false),
+    [form, setForm] = useState({
+      clienteId: '',
+      planoId: '',
+      inicioEm: '',
+      fimEm: '',
+      fusoHorario: 'America/Recife',
+    });
+  const state = useRemoteData(() => adminPlanoService.listAssinaturas({ page, limit: 20 }), [page]);
+  const plans = useRemoteData(
+    () => adminPlanoService.listPlanos({ limit: 100, ativo: 'true' }),
+    [],
+  );
+  const clients = useRemoteData(() => adminService.clients({ page: 1, limit: 100 }), []);
+  async function create(e) {
+    e.preventDefault();
+    try {
+      await adminPlanoService.createAssinatura({
+        ...form,
+        clienteId: Number(form.clienteId),
+        planoId: Number(form.planoId),
+      });
+      setCreating(false);
+      setForm({
+        clienteId: '',
+        planoId: '',
+        inicioEm: '',
+        fimEm: '',
+        fusoHorario: 'America/Recife',
+      });
+      state.reload();
+    } catch (e2) {
+      setError(msg(e2));
+    }
+  }
+  async function act() {
+    if (!selected) return;
+    try {
+      await adminPlanoService.updateAssinaturaStatus(selected.id, dialog, motivo.trim());
+      setDialog(null);
+      setMotivo('');
+      setError('');
+      state.reload();
+    } catch (e2) {
+      setError(msg(e2));
+    }
+  }
+  return (
+    <>
+      <PageHeader
+        title="Assinaturas"
+        actions={<Button onClick={() => setCreating(true)}>Nova assinatura</Button>}
+      />
+      {state.loading ? (
+        <Skeleton />
+      ) : (
+        <DataTable
+          caption="Assinaturas"
+          rows={state.data?.data ?? []}
+          columns={[
+            { key: 'cliente_nome', label: 'Cliente' },
+            { key: 'plano_nome_snapshot', label: 'Plano' },
+            {
+              key: 'status',
+              label: 'Status',
+              render: (r) => (
+                <Badge tone={subscriptionStatus(r.status).tone}>
+                  {subscriptionStatus(r.status).label}
+                </Badge>
+              ),
+            },
+            { key: 'inicio_em', label: 'Início' },
+            { key: 'fim_em', label: 'Fim' },
+          ]}
+          renderActions={(r) => (
+            <div className="cluster">
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setSelected(r);
+                  setDialog('suspender');
+                  setMotivo('');
+                }}
+              >
+                Suspender
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setSelected(r);
+                  setDialog('reativar');
+                  setMotivo('');
+                }}
+              >
+                Reativar
+              </Button>
+              <Button
+                variant="danger"
+                onClick={() => {
+                  setSelected(r);
+                  setDialog('cancelar');
+                  setMotivo('');
+                }}
+              >
+                Cancelar
+              </Button>
+            </div>
+          )}
+        />
+      )}
+      <Pagination
+        page={state.data?.pagination?.page ?? 1}
+        totalPages={state.data?.pagination?.totalPages ?? 1}
+        onChange={setPage}
+      />
+      <Dialog open={creating} onClose={() => setCreating(false)} title="Nova assinatura">
+        <form className="form" onSubmit={create}>
+          <label className="field">
+            <span>Cliente</span>
+            <select
+              className="field__control"
+              required
+              value={form.clienteId}
+              onChange={(e) => setForm({ ...form, clienteId: e.target.value })}
+            >
+              <option value="">Selecione</option>
+              {(clients.data?.data ?? []).map((c) => (
+                <option value={c.id} key={c.id}>
+                  {c.nome}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="field">
+            <span>Plano</span>
+            <select
+              className="field__control"
+              required
+              value={form.planoId}
+              onChange={(e) => setForm({ ...form, planoId: e.target.value })}
+            >
+              <option value="">Selecione</option>
+              {(plans.data?.data ?? []).map((p) => (
+                <option value={p.id} key={p.id}>
+                  {p.nome}
+                </option>
+              ))}
+            </select>
+          </label>
+          <Input
+            label="Início"
+            type="date"
+            required
+            value={form.inicioEm}
+            onChange={(e) => setForm({ ...form, inicioEm: e.target.value })}
+          />
+          <Input
+            label="Fim"
+            type="date"
+            required
+            value={form.fimEm}
+            onChange={(e) => setForm({ ...form, fimEm: e.target.value })}
+          />
+          <Input
+            label="Fuso horário"
+            value={form.fusoHorario}
+            onChange={(e) => setForm({ ...form, fusoHorario: e.target.value })}
+          />
+          {error && <Alert type="error">{error}</Alert>}
+          <Button type="submit">Criar assinatura</Button>
+        </form>
+      </Dialog>
+      <Dialog
+        open={Boolean(dialog)}
+        onClose={() => setDialog(null)}
+        title="Confirmar operação na assinatura"
+      >
+        <div className="stack">
+          <Input
+            label="Motivo"
+            required
+            value={motivo}
+            onChange={(e) => setMotivo(e.target.value)}
+          />
+          {error && <Alert type="error">{error}</Alert>}
+          <div className="cluster">
+            <Button variant="danger" onClick={act} disabled={!motivo.trim()}>
+              Confirmar
+            </Button>
+            <Button variant="secondary" onClick={() => setDialog(null)}>
+              Voltar
+            </Button>
+          </div>
+        </div>
+      </Dialog>
     </>
   );
 }

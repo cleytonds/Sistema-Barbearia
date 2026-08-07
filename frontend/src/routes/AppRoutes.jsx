@@ -38,7 +38,11 @@ const AdminDashboardPage = adminPage('AdminDashboardPage'),
   AdminBusinessHoursPage = adminPage('AdminBusinessHoursPage'),
   AdminSchedulesPage = adminPage('AdminSchedulesPage'),
   AdminBlocksPage = adminPage('AdminBlocksPage'),
-  AdminSettingsPage = adminPage('AdminSettingsPage');
+  AdminSettingsPage = adminPage('AdminSettingsPage'),
+  AdminPlansPage = adminPage('AdminPlansPage'),
+  AdminSubscriptionsPage = adminPage('AdminSubscriptionsPage');
+const PlanosPage = lazy(() => import('../pages/PlanosPage.jsx'));
+const MeuPlanoPage = lazy(() => import('../pages/MeuPlanoPage.jsx'));
 const barberLinks = [
   { to: '/barbeiro', label: 'Visão geral' },
   { to: '/barbeiro/agenda', label: 'Minha agenda' },
@@ -54,6 +58,8 @@ const adminLinks = [
   { to: '/admin/funcionamento', label: 'Funcionamento' },
   { to: '/admin/jornadas', label: 'Jornadas' },
   { to: '/admin/bloqueios', label: 'Bloqueios' },
+  { to: '/admin/planos', label: 'Planos' },
+  { to: '/admin/assinaturas', label: 'Assinaturas' },
   { to: '/admin/configuracoes', label: 'Configurações' },
 ];
 export function AppRoutes() {
@@ -62,6 +68,7 @@ export function AppRoutes() {
       <Routes>
         <Route element={<PublicLayout />}>
           <Route path="/" element={<HomePage />} />
+          <Route path="/planos" element={<PlanosPage />} />
           <Route path="/agendar" element={<SchedulePage />} />
           <Route path="/redefinir-senha" element={<ResetPasswordPage />} />
           <Route element={<GuestRoute />}>
@@ -74,6 +81,7 @@ export function AppRoutes() {
             <Route element={<RoleRoute roles={['cliente']} />}>
               <Route path="/agendamento/sucesso/:id" element={<ScheduleSuccessPage />} />
               <Route path="/meus-agendamentos" element={<MyAppointmentsPage />} />
+              <Route path="/meu-plano" element={<MeuPlanoPage />} />
               <Route path="/agendamentos/:id" element={<AppointmentDetailsPage />} />
             </Route>
           </Route>
@@ -105,6 +113,8 @@ export function AppRoutes() {
               <Route path="/admin/jornadas" element={<AdminSchedulesPage />} />
               <Route path="/admin/bloqueios" element={<AdminBlocksPage />} />
               <Route path="/admin/configuracoes" element={<AdminSettingsPage />} />
+              <Route path="/admin/planos" element={<AdminPlansPage />} />
+              <Route path="/admin/assinaturas" element={<AdminSubscriptionsPage />} />
             </Route>
           </Route>
         </Route>

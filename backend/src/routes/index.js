@@ -9,6 +9,9 @@ import { disponibilidadeRoutes } from './disponibilidadeRoutes.js';
 import { agendamentoRoutes } from './agendamentoRoutes.js';
 import { adminAgendamentoRoutes } from './adminAgendamentoRoutes.js';
 import { barbeiroAgendamentoRoutes } from './barbeiroAgendamentoRoutes.js';
+import { planoRoutes } from './planoRoutes.js';
+import { meuPlanoRoutes } from './meuPlanoRoutes.js';
+import { adminPlanoRoutes } from './adminPlanoRoutes.js';
 
 export const router = Router();
 
@@ -21,8 +24,11 @@ router.use('/servicos', servicoRoutes);
 router.use('/barbeiros', barbeiroRoutes);
 router.use('/configuracoes', configuracaoRoutes);
 router.use('/admin', adminRoutes);
+router.use('/admin', adminPlanoRoutes);
 router.use('/barbeiro', barbeiroAreaRoutes);
 router.use('/disponibilidade', disponibilidadeRoutes);
 router.use('/agendamentos', agendamentoRoutes);
 router.use('/admin/agendamentos', adminAgendamentoRoutes);
 router.use('/barbeiro/agendamentos', barbeiroAgendamentoRoutes);
+router.use('/planos', planoRoutes);
+router.use('/meu-plano', meuPlanoRoutes);

@@ -1,0 +1,363 @@
+import { createHash } from 'node:crypto';
+import { runTransactionWithRetry } from '../database/transactionRetry.js';
+import {
+  assertSubscriptionTransition,
+  assertPeriod,
+  civilDate,
+  isInPeriod,
+} from '../domain/plans/rules.js';
+import { IDEMPOTENCY_KEY_MAX_LENGTH, IDEMPOTENCY_KEY_MIN_LENGTH } from '../config/httpConfig.js';
+import * as assinaturaPlanoRepository from '../repositories/assinaturaPlanoRepository.js';
+import * as planoRepository from '../repositories/planoRepository.js';
+import * as usoPlanoRepository from '../repositories/usoPlanoRepository.js';
+import * as historicoPlanoRepository from '../repositories/historicoPlanoRepository.js';
+import { AppError } from '../utils/AppError.js';
+import { isValidTimeZone } from '../utils/dateTime.js';
+import { paginationResult, parsePagination } from '../utils/pagination.js';
+
+const IDEMPOTENCY_KEY_PATTERN = new RegExp(
+  `^[\\x21-\\x7e]{${IDEMPOTENCY_KEY_MIN_LENGTH},${IDEMPOTENCY_KEY_MAX_LENGTH}}$`,
+);
+
+const allowedSorts = {
+  id: 'a.id',
+  status: 'a.status',
+  criado_em: 'a.criado_em',
+  inicio_em: 'a.inicio_em',
+  fim_em: 'a.fim_em',
+};
+
+const hash = (value) => createHash('sha256').update(value).digest();
+
+function toCivilDate(value) {
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  return value;
+}
+
+function validateIdempotencyKey(key) {
+  if (typeof key !== 'string' || !IDEMPOTENCY_KEY_PATTERN.test(key)) {
+    throw new AppError('Idempotency-Key obrigatório ou inválida.', 422, 'IDEMPOTENCY_KEY_REQUIRED');
+  }
+  return key;
+}
+
+function buildIdempotency({ key, clientId, planoId, inicioEm, fimEm }) {
+  validateIdempotencyKey(key);
+  const canonical = JSON.stringify({
+    clientId: String(clientId),
+    planoId: String(planoId),
+    inicioEm,
+    fimEm,
+  });
+  return { keyHash: hash(key), payloadHash: hash(canonical) };
+}
+
+function sameHash(left, right) {
+  return Buffer.isBuffer(left) && Buffer.isBuffer(right) && left.equals(right);
+}
+
+function isIdempotencyDuplicate(error) {
+  return (
+    error?.code === 'ER_DUP_ENTRY' && String(error?.message).includes('uq_assinaturas_idempotencia')
+  );
+}
+
+function normalizeSubscriptionPayload(data) {
+  return {
+    planoId: Number(data.planoId),
+    clientId: Number(data.clientId),
+    inicioEm: data.inicioEm,
+    fimEm: data.fimEm,
+    fusoHorario: data.fusoHorario ?? 'America/Recife',
+    actorId: Number(data.actorId),
+  };
+}
+
+function assertSubscriptionPayload(payload) {
+  if (!Number.isInteger(payload.planoId) || payload.planoId <= 0)
+    throw new AppError('Plano inválido.', 422, 'PLAN_REQUIRED');
+  if (!Number.isInteger(payload.clientId) || payload.clientId <= 0)
+    throw new AppError('Cliente inválido.', 422, 'CLIENT_REQUIRED');
+  if (!Number.isInteger(payload.actorId) || payload.actorId <= 0)
+    throw new AppError('Autor inválido.', 422, 'VALIDATION_ERROR');
+  if (!civilDate(payload.inicioEm))
+    throw new AppError('Data de início inválida.', 422, 'INVALID_CIVIL_DATE');
+  if (!civilDate(payload.fimEm))
+    throw new AppError('Data de fim inválida.', 422, 'INVALID_CIVIL_DATE');
+  assertPeriod({ inicio: payload.inicioEm, fim: payload.fimEm });
+  if (!isValidTimeZone(payload.fusoHorario))
+    throw new AppError('Fuso horário inválido.', 422, 'INVALID_TIME_ZONE');
+}
+
+async function loadSubscribablePlan(planoId, connection) {
+  const plano = await planoRepository.buscarPlanoPorId(planoId, connection);
+  if (!plano) throw new AppError('Plano não encontrado.', 404, 'PLAN_NOT_FOUND');
+  if (!plano.ativo) throw new AppError('Plano não está ativo.', 422, 'PLAN_NOT_ACTIVE');
+  if (!plano.adesoes_abertas)
+    throw new AppError('Adesões encerradas para este plano.', 422, 'PLAN_ENROLLMENT_CLOSED');
+  return plano;
+}
+
+async function checkSubscriptionOverlap(clientId, inicioEm, fimEm, connection) {
+  const overlapping = await assinaturaPlanoRepository.buscarSobreposicao(
+    clientId,
+    inicioEm,
+    fimEm,
+    connection,
+  );
+  if (overlapping.length > 0)
+    throw new AppError(
+      'Já existe uma assinatura do cliente no período.',
+      409,
+      'SUBSCRIPTION_OVERLAP',
+    );
+}
+
+async function copySnapshotData(planoId, connection) {
+  const [servicos, barbeiros] = await Promise.all([
+    planoRepository.listarServicosDoPlano(planoId, connection),
+    planoRepository.listarBarbeirosDoPlano(planoId, connection),
+  ]);
+  return { servicos, barbeiros };
+}
+
+async function createSubscription({ payload, keyHash, payloadHash, connection, evento, actorId }) {
+  const plano = await loadSubscribablePlan(payload.planoId, connection);
+  const adesaoIni = toCivilDate(plano.adesao_inicio);
+  const adesaoFim = toCivilDate(plano.adesao_fim);
+  if (!isInPeriod({ date: payload.inicioEm, inicio: adesaoIni, fim: adesaoFim }))
+    throw new AppError('Data fora do período de adesão.', 422, 'ENROLLMENT_OUTSIDE_PERIOD');
+  if (!isInPeriod({ date: payload.fimEm, inicio: adesaoIni, fim: adesaoFim }))
+    throw new AppError('Data fora do período de adesão.', 422, 'ENROLLMENT_OUTSIDE_PERIOD');
+  await checkSubscriptionOverlap(payload.clientId, payload.inicioEm, payload.fimEm, connection);
+
+  const assinaturaId = await assinaturaPlanoRepository.criarAssinatura(
+    {
+      planId: plano.id,
+      clientId: payload.clientId,
+      start: payload.inicioEm,
+      end: payload.fimEm,
+      planName: plano.nome,
+      price: plano.preco,
+      hasWeekly: plano.possui_limite_semanal,
+      weekly: plano.limite_semanal,
+      hasTotal: plano.possui_limite_total,
+      total: plano.limite_total,
+      timezone: payload.fusoHorario,
+      actorId: payload.actorId,
+      keyHash,
+      payloadHash,
+    },
+    connection,
+  );
+
+  const { servicos, barbeiros } = await copySnapshotData(plano.id, connection);
+  await assinaturaPlanoRepository.inserirServicosSnapshot(assinaturaId, servicos, connection);
+  await assinaturaPlanoRepository.inserirBarbeirosSnapshot(assinaturaId, barbeiros, connection);
+
+  await historicoPlanoRepository.registrarEvento(
+    {
+      subscriptionId: assinaturaId,
+      type: evento,
+      actorId,
+      note: 'Assinatura solicitada',
+      after: { planoId: plano.id, inicioEm: payload.inicioEm, fimEm: payload.fimEm },
+    },
+    connection,
+  );
+  return assinaturaId;
+}
+
+export async function solicitarAdesao({ data, actorId, idempotencyKey, requestId }) {
+  const payload = normalizeSubscriptionPayload({ ...data, actorId });
+  assertSubscriptionPayload(payload);
+  const idem = buildIdempotency({
+    key: idempotencyKey,
+    clientId: payload.clientId,
+    planoId: payload.planoId,
+    inicioEm: payload.inicioEm,
+    fimEm: payload.fimEm,
+  });
+  const logContext = { requestId, usuarioId: actorId, operation: 'subscription_request' };
+
+  try {
+    return await runTransactionWithRetry({
+      logContext,
+      operation: async ({ connection }) => {
+        // Replay idempotente: mesma chave + mesmo payload retorna a assinatura original.
+        const existing = await assinaturaPlanoRepository.buscarPorIdempotencyKey(
+          payload.clientId,
+          idem.keyHash,
+          connection,
+        );
+        if (existing) {
+          if (!sameHash(existing.idempotency_payload_hash, idem.payloadHash))
+            throw new AppError(
+              'Idempotency-Key reutilizada com payload diferente.',
+              409,
+              'IDEMPOTENCY_KEY_REUSED',
+            );
+          return { assinaturaId: existing.id, replay: true };
+        }
+        const assinaturaId = await createSubscription({
+          payload,
+          keyHash: idem.keyHash,
+          payloadHash: idem.payloadHash,
+          connection,
+          evento: 'assinatura_solicitada',
+          actorId: payload.actorId,
+        });
+        return { assinaturaId, replay: false };
+      },
+    });
+  } catch (error) {
+    if (isIdempotencyDuplicate(error)) {
+      // Hash único já inserido por requisição concorrente: consulta o replay após rollback.
+      const existing = await assinaturaPlanoRepository.buscarPorIdempotencyKey(
+        payload.clientId,
+        idem.keyHash,
+      );
+      if (existing && sameHash(existing.idempotency_payload_hash, idem.payloadHash))
+        return { assinaturaId: existing.id, replay: true };
+      throw new AppError(
+        'Idempotency-Key reutilizada com payload diferente.',
+        409,
+        'IDEMPOTENCY_KEY_REUSED',
+      );
+    }
+    throw error;
+  }
+}
+
+export async function criarAssinaturaAdministrativa({ data, actorId, requestId }) {
+  const payload = normalizeSubscriptionPayload({ ...data, actorId });
+  assertSubscriptionPayload(payload);
+  const logContext = { requestId, usuarioId: actorId, operation: 'subscription_create_admin' };
+  return runTransactionWithRetry({
+    logContext,
+    operation: async ({ connection }) => {
+      const assinaturaId = await createSubscription({
+        payload,
+        keyHash: null,
+        payloadHash: null,
+        connection,
+        evento: 'assinatura_solicitada',
+        actorId: payload.actorId,
+      });
+      return assinaturaId;
+    },
+  });
+}
+
+export async function obterAssinaturaAdmin({ id }) {
+  const assinatura = await assinaturaPlanoRepository.buscarAssinaturaPorId(id);
+  if (!assinatura) throw new AppError('Assinatura não encontrada.', 404, 'SUBSCRIPTION_NOT_FOUND');
+  const [servicos, barbeiros] = await Promise.all([
+    assinaturaPlanoRepository.listarServicosSnapshot(id),
+    assinaturaPlanoRepository.listarBarbeirosSnapshot(id),
+  ]);
+  return { ...assinatura, servicos, barbeiros };
+}
+
+export async function listarAssinaturasAdmin({ query }) {
+  const pagination = parsePagination(query, allowedSorts, 'criado_em');
+  const result = await assinaturaPlanoRepository.listarAssinaturasAdmin(
+    {
+      plano: query.plano,
+      cliente: query.cliente,
+      status: query.status,
+    },
+    pagination,
+  );
+  return paginationResult(result.rows, result.total, pagination);
+}
+
+export async function obterMeuPlano({ clientId }) {
+  const assinatura = await assinaturaPlanoRepository.buscarMeuPlano(clientId);
+  if (!assinatura)
+    throw new AppError('Nenhuma assinatura encontrada.', 404, 'SUBSCRIPTION_NOT_FOUND');
+  const [servicos, barbeiros] = await Promise.all([
+    assinaturaPlanoRepository.listarServicosSnapshot(assinatura.id),
+    assinaturaPlanoRepository.listarBarbeirosSnapshot(assinatura.id),
+  ]);
+  return { ...assinatura, servicos, barbeiros };
+}
+
+export async function listarMeusUsos({ clientId, assinaturaId }) {
+  const assinatura = await assinaturaPlanoRepository.buscarAssinaturaPorId(assinaturaId);
+  if (!assinatura || assinatura.cliente_id !== clientId)
+    throw new AppError('Assinatura não encontrada.', 404, 'SUBSCRIPTION_NOT_FOUND');
+  const usos = await usoPlanoRepository.listarUsosDaAssinatura(assinaturaId);
+  return usos;
+}
+
+async function mutarStatusAssinatura({ id, status, motivo, actorId, evento, nota, requestId }) {
+  if (!motivo?.trim()) throw new AppError('Motivo obrigatório.', 422, 'VALIDATION_ERROR');
+  const logContext = { requestId, usuarioId: actorId, operation: 'subscription_status' };
+  return runTransactionWithRetry({
+    logContext,
+    operation: async ({ connection }) => {
+      const assinatura = await assinaturaPlanoRepository.buscarAssinaturaPorIdForUpdate(
+        id,
+        connection,
+      );
+      if (!assinatura)
+        throw new AppError('Assinatura não encontrada.', 404, 'SUBSCRIPTION_NOT_FOUND');
+      assertSubscriptionTransition(assinatura.status, status);
+      await assinaturaPlanoRepository.atualizarStatus(
+        id,
+        status,
+        { actorId, motivo: motivo.trim(), now: new Date() },
+        connection,
+      );
+      await historicoPlanoRepository.registrarEvento(
+        {
+          subscriptionId: id,
+          type: evento,
+          actorId,
+          note: nota,
+          before: { status: assinatura.status },
+          after: { status },
+        },
+        connection,
+      );
+      return id;
+    },
+  });
+}
+
+export async function suspenderAssinatura({ id, motivo, actorId, requestId }) {
+  return mutarStatusAssinatura({
+    id,
+    status: 'suspensa',
+    motivo,
+    actorId,
+    evento: 'assinatura_suspensa',
+    nota: 'Assinatura suspensa',
+    requestId,
+  });
+}
+
+export async function reativarAssinatura({ id, motivo, actorId, requestId }) {
+  return mutarStatusAssinatura({
+    id,
+    status: 'ativa',
+    motivo,
+    actorId,
+    evento: 'assinatura_reativada',
+    nota: 'Assinatura reativada',
+    requestId,
+  });
+}
+
+export async function cancelarAssinatura({ id, motivo, actorId, requestId }) {
+  return mutarStatusAssinatura({
+    id,
+    status: 'cancelada',
+    motivo,
+    actorId,
+    evento: 'assinatura_cancelada',
+    nota: 'Assinatura cancelada',
+    requestId,
+  });
+}

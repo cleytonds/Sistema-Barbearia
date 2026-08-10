@@ -14,6 +14,11 @@ export function serializeAppointment(row, timeZone = 'UTC') {
     horaInicio: start.toFormat('HH:mm'),
     horaFim: end.toFormat('HH:mm'),
     preco: money(row.preco),
+    tipoCobranca: row.tipo_cobranca ?? 'avulso',
+    assinaturaPlanoId: asId(row.assinatura_plano_id),
+    plano: row.plano_id_snapshot
+      ? { id: asId(row.plano_id_snapshot), nome: row.plano_nome_snapshot }
+      : null,
     status: row.status,
     observacoes: row.observacoes_cliente ?? undefined,
   };

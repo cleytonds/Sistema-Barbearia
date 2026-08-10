@@ -1,13 +1,36 @@
 import * as assinaturaService from '../services/assinaturaPlanoService.js';
 import * as planoService from '../services/planoService.js';
 import { IDEMPOTENCY_KEY_HEADER } from '../config/httpConfig.js';
-import { serializeAssinatura } from './assinaturaSerializer.js';
+import { serializeAssinatura, stringifyIds } from './assinaturaSerializer.js';
 
-export const listPublic = async (request, response) =>
-  response.json(await planoService.listarPlanosPublicos({ query: request.query }));
+function serializePublicPlan(plan) {
+  return stringifyIds({
+    id: plan.id,
+    nome: plan.nome,
+    descricao: plan.descricao,
+    preco: plan.preco,
+    adesaoInicio: plan.adesaoInicio ?? plan.adesao_inicio,
+    adesaoFim: plan.adesaoFim ?? plan.adesao_fim,
+    utilizacaoInicio: plan.utilizacaoInicio ?? plan.utilizacao_inicio,
+    utilizacaoFim: plan.utilizacaoFim ?? plan.utilizacao_fim,
+    possuiLimiteSemanal: plan.possuiLimiteSemanal ?? plan.possui_limite_semanal,
+    limiteSemanal: plan.limiteSemanal ?? plan.limite_semanal,
+    possuiLimiteTotal: plan.possuiLimiteTotal ?? plan.possui_limite_total,
+    limiteTotal: plan.limiteTotal ?? plan.limite_total,
+    ...(plan.servicos && { servicos: plan.servicos }),
+    ...(plan.barbeiros && { barbeiros: plan.barbeiros }),
+  });
+}
+
+export const listPublic = async (request, response) => {
+  const result = await planoService.listarPlanosPublicos({ query: request.query });
+  response.json({ ...result, data: result.data.map(serializePublicPlan) });
+};
 
 export const getPublic = async (request, response) =>
-  response.json({ data: await planoService.obterPlanoPublico({ id: request.params.id }) });
+  response.json({
+    data: serializePublicPlan(await planoService.obterPlanoPublico({ id: request.params.id })),
+  });
 
 export const sign = async (request, response) => {
   const result = await assinaturaService.solicitarAdesao({
@@ -17,6 +40,7 @@ export const sign = async (request, response) => {
     requestId: request.requestId,
   });
   response.status(result.replay ? 200 : 201).json({
+    replay: result.replay,
     data: serializeAssinatura(
       await assinaturaService.obterAssinaturaAdmin({ id: result.assinaturaId }),
     ),
@@ -35,24 +59,11 @@ export const myUsages = async (request, response) => {
     clientId: request.auth.usuario.id,
   });
   response.json({
-    data: await assinaturaService.listarMeusUsos({
-      clientId: request.auth.usuario.id,
-      assinaturaId: meuPlano.id,
-    }),
-  });
-};
-
-export const cancelOwn = async (request, response) => {
-  const meuPlano = await assinaturaService.obterMeuPlano({
-    clientId: request.auth.usuario.id,
-  });
-  await assinaturaService.cancelarAssinatura({
-    id: meuPlano.id,
-    motivo: request.body.motivo,
-    actorId: request.auth.usuario.id,
-    requestId: request.requestId,
-  });
-  response.json({
-    data: serializeAssinatura(await assinaturaService.obterAssinaturaAdmin({ id: meuPlano.id })),
+    data: stringifyIds(
+      await assinaturaService.listarMeusUsos({
+        clientId: request.auth.usuario.id,
+        assinaturaId: meuPlano.id,
+      }),
+    ),
   });
 };

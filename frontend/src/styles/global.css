@@ -474,6 +474,37 @@ h3 {
   color: var(--color-brand-400);
   margin: 0;
 }
+.plan-card {
+  display: grid;
+  gap: var(--space-5);
+  align-content: start;
+}
+.plan-card__header {
+  min-width: 0;
+}
+.plan-card__divider {
+  height: 1px;
+  background: var(--color-border);
+}
+.plan-card__info {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-5);
+}
+.plan-card__info-item {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.plan-card__actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-3);
+  margin-top: auto;
+}
+.plan-card__actions .button {
+  width: 100%;
+}
 .plan-card h2 {
   margin: 0;
 }
@@ -486,6 +517,87 @@ h3 {
 }
 .plan-card .cluster {
   justify-content: space-between;
+}
+.plan-detail {
+  display: grid;
+  gap: var(--space-5);
+}
+.dialog:has(.plan-detail) {
+  width: min(92vw, 34rem);
+  padding: clamp(var(--space-4), 4vw, var(--space-6));
+}
+.dialog:has(.plan-detail) > .cluster {
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+.dialog:has(.plan-detail) > .cluster h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(1.5rem, 5vw, 2rem);
+  line-height: 1.15;
+}
+.dialog:has(.plan-detail) > .cluster .button {
+  flex: 0 0 var(--touch-target);
+  width: var(--touch-target);
+  min-height: var(--touch-target);
+  padding: 0;
+}
+.plan-detail__section {
+  display: grid;
+  gap: var(--space-3);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--color-border);
+}
+.plan-detail__section h3,
+.plan-detail__section p,
+.plan-detail__section ul {
+  margin: 0;
+}
+.plan-detail__section h3 {
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  font-weight: 650;
+  color: var(--color-text);
+}
+.plan-detail__period {
+  color: var(--color-text-muted);
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+.plan-detail__section ul {
+  padding-left: 1.25rem;
+  display: grid;
+  gap: var(--space-2);
+  color: var(--color-text-muted);
+}
+.plan-detail__section li::marker {
+  color: var(--color-brand-400);
+}
+.plan-detail__values {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+.plan-detail__actions {
+  position: sticky;
+  bottom: calc(-1 * var(--space-6));
+  display: grid;
+  padding-block: var(--space-4);
+  background: var(--color-surface);
+}
+.plan-detail__actions .button {
+  width: 100%;
+  min-height: 3rem;
+  font-weight: 700;
+}
+@media (max-width: 30rem) {
+  .plan-detail__values {
+    grid-template-columns: 1fr;
+  }
+  .plan-detail__actions {
+    bottom: calc(-1 * var(--space-4));
+  }
 }
 .stepper {
   display: grid;

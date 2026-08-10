@@ -3,9 +3,15 @@ import { IDEMPOTENCY_KEY_MAX_LENGTH, IDEMPOTENCY_KEY_MIN_LENGTH } from '../confi
 import { SUBSCRIPTION_STATUS } from '../domain/plans/constants.js';
 import { isValidTimeZone } from '../utils/dateTime.js';
 import { MAX_PAGE_SIZE } from '../utils/pagination.js';
+import { isMoney } from '../utils/decimal.js';
 
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
-const positiveId = (field) => param(field).isInt({ min: 1 }).toInt();
+const positiveId = (field) =>
+  param(field).custom((value) => {
+    if (!/^[1-9]\d{0,19}$/.test(value) || BigInt(value) > 18446744073709551615n)
+      throw new Error('identificador invÃ¡lido');
+    return true;
+  });
 const strictBody = (allowed) =>
   body().custom((value) => {
     if (Object.keys(value).some((key) => !allowed.includes(key)))
@@ -33,7 +39,7 @@ export const createPlanValidator = [
   ]),
   body('nome').isString().trim().isLength({ min: 2, max: 120 }),
   body('descricao').optional({ nullable: true }).isString().trim().isLength({ max: 500 }),
-  body('preco').isString().notEmpty(),
+  body('preco').custom(isMoney),
   body('adesaoInicio').matches(datePattern),
   body('adesaoFim').matches(datePattern),
   body('utilizacaoInicio').matches(datePattern),
@@ -43,9 +49,9 @@ export const createPlanValidator = [
   body('possuiLimiteTotal').isBoolean(),
   body('limiteTotal').optional({ nullable: true }).isInt({ min: 1 }),
   body('servicos').isArray({ min: 1 }),
-  body('servicos.*').isInt({ min: 1 }),
+  body('servicos.*').custom((value) => /^[1-9]\d*$/.test(String(value))),
   body('barbeiros').isArray({ min: 1 }),
-  body('barbeiros.*').isInt({ min: 1 }),
+  body('barbeiros.*').custom((value) => /^[1-9]\d*$/.test(String(value))),
 ];
 
 export const updatePlanValidator = [
@@ -67,7 +73,7 @@ export const updatePlanValidator = [
   ]),
   body('nome').isString().trim().isLength({ min: 2, max: 120 }),
   body('descricao').optional({ nullable: true }).isString().trim().isLength({ max: 500 }),
-  body('preco').isString().notEmpty(),
+  body('preco').custom(isMoney),
   body('adesaoInicio').matches(datePattern),
   body('adesaoFim').matches(datePattern),
   body('utilizacaoInicio').matches(datePattern),
@@ -96,6 +102,29 @@ export const planStatusValidator = [
     ])
     .toLowerCase(),
   body('motivo').optional({ nullable: true }).isString().trim().isLength({ max: 500 }),
+];
+
+export const planActiveValidator = [
+  ...planIdValidator,
+  strictBody(['ativo']),
+  body('ativo').isBoolean({ strict: true }),
+];
+
+export const planEnrollmentValidator = [
+  ...planIdValidator,
+  strictBody(['abertas']),
+  body('abertas').isBoolean({ strict: true }),
+];
+
+export const planUsageValidator = [
+  ...planIdValidator,
+  strictBody(['permitido', 'motivo']),
+  body('permitido').isBoolean({ strict: true }),
+  body('motivo')
+    .if(body('permitido').equals('false'))
+    .isString()
+    .trim()
+    .isLength({ min: 1, max: 500 }),
 ];
 
 export const publicPlanListValidator = [
@@ -161,8 +190,16 @@ export const adminSubscriptionListValidator = [
 ];
 
 export const adminSubscriptionStatusValidator = [
-  param('id').isInt({ min: 1 }).toInt(),
-  strictBody(['acao', 'motivo']),
-  body('acao').isIn(['suspender', 'reativar', 'cancelar']).toLowerCase(),
+  positiveId('id'),
+  strictBody(['motivo']),
   body('motivo').isString().trim().isLength({ min: 1, max: 500 }),
+];
+
+export const paymentConfirmationValidator = [
+  positiveId('id'),
+  strictBody(['referencia', 'valor', 'observacao', 'forma']),
+  body('referencia').matches(/^\d{4}-\d{2}-01$/),
+  body('valor').custom(isMoney),
+  body('observacao').optional({ nullable: true }).isString().trim().isLength({ max: 500 }),
+  body('forma').equals('presencial'),
 ];

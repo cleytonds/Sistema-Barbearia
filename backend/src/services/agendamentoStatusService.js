@@ -8,6 +8,7 @@ import * as appointmentRepository from '../repositories/agendamentoRepository.js
 import * as historyRepository from '../repositories/historicoAgendamentoRepository.js';
 import { AppError } from '../utils/AppError.js';
 import { logger } from '../utils/logger.js';
+import { consumirUso } from './usoPlanoService.js';
 
 export async function updateStatus({
   id,
@@ -26,13 +27,23 @@ export async function updateStatus({
   };
   await runTransactionWithRetry({
     logContext,
-    operation: async ({ connection }) => {
+    operation: async ({ connection, transactionContext }) => {
       const appointment = await appointmentRepository.findByIdForUpdate(id, connection);
       if (!appointment)
         throw new AppError('Agendamento não encontrado.', 404, 'APPOINTMENT_NOT_FOUND');
       if (role === 'barbeiro') {
         const barber = await appointmentRepository.findBarberByUser(userId, connection);
         assertAssignedBarber(appointment, barber);
+      }
+      if (appointment.status === nextStatus && ['concluido', 'ausente'].includes(nextStatus)) {
+        await consumirUso({
+          agendamentoId: id,
+          actorId: userId,
+          connection,
+          transactionContext,
+          now: nowUtc,
+        });
+        return;
       }
       assertStatusTransition({
         currentStatus: appointment.status,
@@ -41,6 +52,15 @@ export async function updateStatus({
         nowUtc,
       });
       await appointmentRepository.updateStatus({ id, status: nextStatus, nowUtc }, connection);
+      if (['concluido', 'ausente'].includes(nextStatus)) {
+        await consumirUso({
+          agendamentoId: id,
+          actorId: userId,
+          connection,
+          transactionContext,
+          now: nowUtc,
+        });
+      }
       await historyRepository.create(
         {
           appointmentId: id,

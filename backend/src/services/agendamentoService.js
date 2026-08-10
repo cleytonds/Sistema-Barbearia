@@ -8,11 +8,14 @@ import {
 import { serializeAppointment } from '../domain/appointments/serializers.js';
 import { buildBookingSnapshot } from '../domain/appointments/snapshots.js';
 import * as appointmentRepository from '../repositories/agendamentoRepository.js';
+import * as availabilityRepository from '../repositories/disponibilidadeRepository.js';
 import * as historyRepository from '../repositories/historicoAgendamentoRepository.js';
 import { AppError } from '../utils/AppError.js';
 import { localToUtc } from '../utils/dateTime.js';
 import { logger } from '../utils/logger.js';
 import { AVAILABILITY_MODE, validateAvailability } from './disponibilidadeService.js';
+import { decidirCobertura } from './coberturaPlanoService.js';
+import { reservarUso } from './usoPlanoService.js';
 
 function replayResult(row, payloadHash, logContext) {
   if (!sameHash(row.idempotency_payload_hash, payloadHash)) {
@@ -61,6 +64,16 @@ async function createTransactional({
     id = await runTransactionWithRetry({
       logContext,
       operation: async ({ connection, transactionContext }) => {
+        await availabilityRepository.lockBarber(payload.barbeiroId, connection);
+        const client = await appointmentRepository.findActiveClient(clientId, connection);
+        if (!client) throw new AppError('Cliente não encontrado.', 404, 'CLIENT_NOT_FOUND');
+        const coverage = await decidirCobertura({
+          clienteId: clientId,
+          servicoId: payload.servicoId,
+          barbeiroId: payload.barbeiroId,
+          data: payload.data,
+          connection,
+        });
         const availability = await validateAvailability({
           barbeiroId: payload.barbeiroId,
           servicoId: payload.servicoId,
@@ -69,8 +82,6 @@ async function createTransactional({
           mode: AVAILABILITY_MODE.TRANSACTIONAL,
           nowUtc,
         });
-        const client = await appointmentRepository.findActiveClient(clientId, connection);
-        if (!client) throw new AppError('Cliente não encontrado.', 404, 'CLIENT_NOT_FOUND');
         const snapshot = buildBookingSnapshot({
           startUtc: startAt,
           price: availability.servicePrice,
@@ -90,9 +101,24 @@ async function createTransactional({
             internalNotes: payload.observacoesInternas,
             keyHash: idempotency.keyHash,
             payloadHash: idempotency.payloadHash,
+            billingType: coverage.tipoCobranca,
+            subscriptionId: coverage.assinaturaId,
+            planId: coverage.planoId,
+            planName: coverage.planoNome,
+            coverageConfirmedAt: coverage.tipoCobranca === 'plano' ? nowUtc : null,
           },
           connection,
         );
+        if (coverage.tipoCobranca === 'plano') {
+          await reservarUso({
+            assinatura: coverage.assinatura,
+            agendamentoId: appointmentId,
+            data: payload.data,
+            actorId,
+            connection,
+            transactionContext,
+          });
+        }
         await historyRepository.create(
           {
             appointmentId,
@@ -104,6 +130,8 @@ async function createTransactional({
               inicioEm: snapshot.startAt,
               fimEm: snapshot.endAt,
               fimOcupacaoEm: snapshot.occupiedUntilAt,
+              tipoCobranca: coverage.tipoCobranca,
+              planoId: coverage.planoId ?? null,
             },
           },
           connection,

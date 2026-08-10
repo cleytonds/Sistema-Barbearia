@@ -55,8 +55,10 @@ export async function create(data, connection) {
        cliente_id, barbeiro_id, servico_id, criado_por, origem,
        inicio_em, fim_em, fim_ocupacao_em, preco, duracao_minutos,
        buffer_minutos, status, observacoes_cliente, observacoes_internas,
-       idempotency_key_hash, idempotency_payload_hash
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       idempotency_key_hash, idempotency_payload_hash, tipo_cobranca,
+       assinatura_plano_id, plano_id_snapshot, plano_nome_snapshot,
+       cobertura_confirmada_em
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       data.clientId,
       data.barberId,
@@ -74,6 +76,11 @@ export async function create(data, connection) {
       data.internalNotes ?? null,
       data.keyHash,
       data.payloadHash,
+      data.billingType ?? 'avulso',
+      data.subscriptionId ?? null,
+      data.planId ?? null,
+      data.planName ?? null,
+      data.coverageConfirmedAt ?? null,
     ],
   );
   return result.insertId;
@@ -91,6 +98,21 @@ export async function updateReschedule({ id, snapshot }, connection) {
   await connection.execute(
     'UPDATE agendamentos SET inicio_em=?, fim_em=?, fim_ocupacao_em=? WHERE id=?',
     [snapshot.startAt, snapshot.endAt, snapshot.occupiedUntilAt, id],
+  );
+}
+
+export async function updatePlanCoverage({ id, coverage }, connection) {
+  await connection.execute(
+    `UPDATE agendamentos SET tipo_cobranca=?, assinatura_plano_id=?,
+       plano_id_snapshot=?, plano_nome_snapshot=?, cobertura_confirmada_em=? WHERE id=?`,
+    [
+      coverage.tipoCobranca,
+      coverage.assinaturaId ?? null,
+      coverage.planoId ?? null,
+      coverage.planoNome ?? null,
+      coverage.coberturaConfirmadaEm ?? null,
+      id,
+    ],
   );
 }
 

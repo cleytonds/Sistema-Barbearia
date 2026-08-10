@@ -35,6 +35,7 @@ export async function cancel(request, response) {
     userId: request.auth.usuario.id,
     role: 'cliente',
     reason: request.body.motivo,
+    responsibility: 'cliente',
     requestId: request.requestId,
   });
   response.json({

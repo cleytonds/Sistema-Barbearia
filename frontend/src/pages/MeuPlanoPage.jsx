@@ -19,6 +19,8 @@ import { formatDate, formatMoney } from '../utils/dateTime.js';
 import { apiError } from '../utils/apiError.js';
 import { remainingUsage, subscriptionStatus, usageStatus } from '../utils/planStatus.js';
 
+const safeDate = (date) => (date ? formatDate(date) : 'Data não informada');
+
 export default function MeuPlanoPage() {
   useDocumentTitle('Meu plano');
   const { notify } = useToast();
@@ -32,6 +34,13 @@ export default function MeuPlanoPage() {
   const data = plan.data?.data;
   const usageRows = usos.data ?? [];
   const usages = Array.isArray(usageRows) ? usageRows : (usageRows.data ?? []);
+  const remaining = data
+    ? remainingUsage({
+        possuiLimiteTotal: data.possuiLimiteTotalSnapshot,
+        limiteTotal: data.limiteTotalSnapshot,
+        usos: usages,
+      })
+    : null;
 
   async function confirmCancel() {
     try {
@@ -60,26 +69,29 @@ export default function MeuPlanoPage() {
         <>
           <Card className="stack">
             <div className="cluster">
-              <h2>{data.plano_nome_snapshot}</h2>
+              <h2>{data.planoNomeSnapshot || 'Plano mensal'}</h2>
               <Badge tone={subscriptionStatus(data.status).tone}>
                 {subscriptionStatus(data.status).label}
               </Badge>
             </div>
             <p className="muted">
-              Vigência: {formatDate(data.inicio_em)} – {formatDate(data.fim_em)}
+              Vigência: {safeDate(data.inicioEm)} – {safeDate(data.fimEm)}
             </p>
-            <p className="muted">Valor: {formatMoney(data.valor_contratado)}</p>
+            <p className="muted">
+              Valor:{' '}
+              {data.valorContratado != null ? formatMoney(data.valorContratado) : 'Não informado'}
+            </p>
             <div className="cluster">
               <PlanUsage label="Utilizada" value={usageCountLabel(usages)} />
               <PlanUsage
                 label="Saldo restante"
-                value={remainingUsage(data) ? String(remainingUsage(data)) : 'Ilimitado'}
+                value={remaining !== null ? String(remaining) : 'Ilimitado'}
               />
             </div>
-            {data.motivo_status && (
+            {data.motivoStatus && (
               <Alert type="warning">
                 {data.status === 'suspensa' ? 'Plano suspenso. ' : ''}
-                {data.motivo_status}
+                {data.motivoStatus}
               </Alert>
             )}
             {data.status !== 'cancelada' && data.status !== 'vencida' && (

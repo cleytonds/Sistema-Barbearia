@@ -9,6 +9,8 @@ import { AppError } from '../utils/AppError.js';
 import { localToUtc } from '../utils/dateTime.js';
 import { logger } from '../utils/logger.js';
 import { AVAILABILITY_MODE, validateAvailability } from './disponibilidadeService.js';
+import { decidirCobertura } from './coberturaPlanoService.js';
+import { atualizarUsoNoReagendamento } from './usoPlanoService.js';
 
 export async function reschedule({ id, userId, role, payload, nowUtc = new Date(), requestId }) {
   const preliminary = await appointmentRepository.findByIdWithoutLock(id);
@@ -69,6 +71,37 @@ export async function reschedule({ id, userId, role, payload, nowUtc = new Date(
           durationMinutes: appointment.duracao_minutos,
           bufferMinutes: appointment.buffer_minutos,
         });
+        let convertedToSingle = false;
+        if (appointment.tipo_cobranca === 'plano') {
+          const coverage = await decidirCobertura({
+            clienteId: appointment.cliente_id,
+            servicoId: appointment.servico_id,
+            barbeiroId: appointment.barbeiro_id,
+            data: payload.data,
+            connection,
+            agendamentoIdIgnorado: appointment.id,
+          });
+          const continuesCovered =
+            coverage.tipoCobranca === 'plano' &&
+            String(coverage.assinaturaId) === String(appointment.assinatura_plano_id);
+          await atualizarUsoNoReagendamento({
+            agendamentoId: appointment.id,
+            assinatura: coverage.assinatura,
+            data: payload.data,
+            continuaCoberto: continuesCovered,
+            actorId: userId,
+            connection,
+            transactionContext,
+            now: nowUtc,
+          });
+          if (!continuesCovered) {
+            convertedToSingle = true;
+            await appointmentRepository.updatePlanCoverage(
+              { id, coverage: { tipoCobranca: 'avulso' } },
+              connection,
+            );
+          }
+        }
         await appointmentRepository.updateReschedule({ id, snapshot }, connection);
         await historyRepository.create(
           {
@@ -87,6 +120,7 @@ export async function reschedule({ id, userId, role, payload, nowUtc = new Date(
               inicioEm: snapshot.startAt,
               fimEm: snapshot.endAt,
               fimOcupacaoEm: snapshot.occupiedUntilAt,
+              ...(convertedToSingle && { tipoCobranca: 'avulso', coberturaAnterior: 'plano' }),
             },
           },
           connection,

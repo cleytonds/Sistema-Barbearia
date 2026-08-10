@@ -1,9 +1,15 @@
 import * as assinaturaService from '../services/assinaturaPlanoService.js';
+import * as pagamentoService from '../services/pagamentoPlanoService.js';
 import * as planoService from '../services/planoService.js';
-import { serializeAssinatura } from './assinaturaSerializer.js';
+import { serializeAssinatura, stringifyIds } from './assinaturaSerializer.js';
 
 export const listPlanos = async (request, response) =>
-  response.json(await planoService.listarPlanosAdmin({ query: request.query }));
+  response.json(stringifyIds(await planoService.listarPlanosAdmin({ query: request.query })));
+
+export const getPlano = async (request, response) =>
+  response.json({
+    data: stringifyIds(await planoService.obterPlanoAdmin({ id: request.params.id })),
+  });
 
 export const createPlano = async (request, response) => {
   const planId = await planoService.criarPlano({
@@ -11,7 +17,9 @@ export const createPlano = async (request, response) => {
     actorId: request.auth.usuario.id,
     requestId: request.requestId,
   });
-  response.status(201).json({ data: await planoService.obterPlanoAdmin({ id: planId }) });
+  response
+    .status(201)
+    .json({ data: stringifyIds(await planoService.obterPlanoAdmin({ id: planId })) });
 };
 
 export const updatePlano = async (request, response) => {
@@ -21,7 +29,9 @@ export const updatePlano = async (request, response) => {
     actorId: request.auth.usuario.id,
     requestId: request.requestId,
   });
-  response.json({ data: await planoService.obterPlanoAdmin({ id: request.params.id }) });
+  response.json({
+    data: stringifyIds(await planoService.obterPlanoAdmin({ id: request.params.id })),
+  });
 };
 
 const statusActions = {
@@ -52,8 +62,17 @@ export const updatePlanStatus = async (request, response) => {
     motivo: request.body.motivo,
     requestId: request.requestId,
   });
-  response.json({ data: await planoService.obterPlanoAdmin({ id: request.params.id }) });
+  response.json({
+    data: stringifyIds(await planoService.obterPlanoAdmin({ id: request.params.id })),
+  });
 };
+
+export const listSubscribers = async (request, response) =>
+  response.json({
+    data: stringifyIds(
+      await assinaturaService.listarAssinantesDoPlano({ planoId: request.params.id }),
+    ),
+  });
 
 export const createSubscription = async (request, response) => {
   const assinaturaId = await assinaturaService.criarAssinaturaAdministrativa({
@@ -75,6 +94,38 @@ export const createSubscription = async (request, response) => {
 export const listSubscriptions = async (request, response) => {
   const result = await assinaturaService.listarAssinaturasAdmin({ query: request.query });
   response.json({ ...result, data: result.data.map(serializeAssinatura) });
+};
+
+export const getSubscription = async (request, response) =>
+  response.json({
+    data: serializeAssinatura(
+      await assinaturaService.obterAssinaturaAdmin({ id: request.params.id }),
+    ),
+  });
+
+export const confirmPayment = async (request, response) => {
+  const reference = request.body.referencia;
+  const periodEnd = new Date(`${reference}T00:00:00.000Z`);
+  periodEnd.setUTCMonth(periodEnd.getUTCMonth() + 1, 0);
+  const pending = await pagamentoService.criarOuObterPagamentoPendente({
+    data: {
+      assinaturaId: request.params.id,
+      referenciaMes: reference,
+      periodoInicio: reference,
+      periodoFim: periodEnd.toISOString().slice(0, 10),
+      valor: request.body.valor,
+      observacao: request.body.observacao,
+      forma: request.body.forma,
+    },
+    actorId: request.auth.usuario.id,
+    requestId: request.requestId,
+  });
+  const result = await pagamentoService.confirmarPagamento({
+    id: pending.pagamento.id,
+    actorId: request.auth.usuario.id,
+    requestId: request.requestId,
+  });
+  response.json({ data: stringifyIds(result.pagamento), replay: result.replay });
 };
 
 const subscriptionActions = {
@@ -102,7 +153,7 @@ const subscriptionActions = {
 };
 
 export const updateSubscriptionStatus = async (request, response) => {
-  const action = subscriptionActions[request.body.acao];
+  const action = subscriptionActions[request.params.action];
   await action(assinaturaService, {
     id: request.params.id,
     motivo: request.body.motivo,
@@ -115,3 +166,17 @@ export const updateSubscriptionStatus = async (request, response) => {
     ),
   });
 };
+
+export const listSubscriptionUsages = async (request, response) =>
+  response.json({
+    data: stringifyIds(
+      await assinaturaService.listarUsosDaAssinaturaAdmin({ id: request.params.id }),
+    ),
+  });
+
+export const listSubscriptionHistory = async (request, response) =>
+  response.json({
+    data: stringifyIds(
+      await assinaturaService.listarHistoricoDaAssinaturaAdmin({ id: request.params.id }),
+    ),
+  });

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import logoUrl from '../../assets/brand/elite-barbearia-081-logo.jpg';
 
 /** Ponto único de integração e fallback da logo oficial. */
-export function BrandMark({ linked = true, variant = 'header', loading = 'eager' }) {
+export function BrandMark({ linked = true, to = '/', variant = 'header', loading = 'eager' }) {
   const [failed, setFailed] = useState(false);
   const content = (
     <span className={`brand-mark brand-mark--${variant}`}>
@@ -22,7 +22,7 @@ export function BrandMark({ linked = true, variant = 'header', loading = 'eager'
     </span>
   );
   return linked ? (
-    <Link to="/" aria-label="Elite Barbearia 081 — início">
+    <Link to={to} aria-label="Elite Barbearia 081 — início">
       {content}
     </Link>
   ) : (

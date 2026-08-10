@@ -44,6 +44,7 @@ export async function cancel(request, response) {
     userId: request.auth.usuario.id,
     role: 'admin',
     reason: request.body.motivo,
+    responsibility: request.body.responsabilidade,
     requestId: request.requestId,
   });
   response.json({ data: await updatedDetail(request) });

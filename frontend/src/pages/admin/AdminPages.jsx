@@ -24,6 +24,20 @@ import { subscriptionStatus, usoStatus } from '../../utils/planStatus.js';
 const today = () => new Date().toISOString().slice(0, 10);
 const msg = (error) =>
   error.response?.data?.error?.message ?? 'Não foi possível concluir a operação.';
+const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+const parsePrice = (value) =>
+  String(value ?? '')
+    .trim()
+    .replace(',', '.');
+const isActive = (item) => (item?.ativo === undefined ? true : Boolean(item.ativo));
+const extractFieldErrors = (error) => {
+  const details = error.response?.data?.error?.details;
+  if (!Array.isArray(details)) return {};
+  return details.reduce((acc, entry) => {
+    if (entry?.campo) acc[entry.campo] = entry.mensagem || 'Valor inválido.';
+    return acc;
+  }, {});
+};
 export function AdminDashboardPage() {
   useDocumentTitle('Painel administrativo');
   const state = useRemoteData(() => adminService.dashboard(today()), []),
@@ -452,7 +466,7 @@ export function AdminServicesPage() {
   const [search, setSearch] = useState(''),
     [page, setPage] = useState(1),
     [editing, setEditing] = useState(null),
-    [form, setForm] = useState({ nome: '', descricao: '', preco: '', duracao_minutos: 30 }),
+    [form, setForm] = useState({ nome: '', descricao: '', preco: '', duracao_minutos: '' }),
     [error, setError] = useState('');
   const state = useRemoteData(
     () => servicoService.listAdmin({ search, page, limit: 20, ativo: 'all' }),
@@ -470,10 +484,11 @@ export function AdminServicesPage() {
   async function save(e) {
     e.preventDefault();
     try {
-      if (editing) await servicoService.update(editing.id, form);
+      if (editing?.id) await servicoService.update(editing.id, form);
       else await servicoService.create(form);
       setEditing(null);
-      setForm({ nome: '', descricao: '', preco: '', duracao_minutos: 30 });
+      setForm({ nome: '', descricao: '', preco: '', duracao_minutos: '' });
+      setError('');
       state.reload();
     } catch (e) {
       setError(msg(e));
@@ -488,7 +503,17 @@ export function AdminServicesPage() {
     <>
       <PageHeader
         title="Serviços"
-        actions={<Button onClick={() => setEditing({})}>Novo serviço</Button>}
+        actions={
+          <Button
+            onClick={() => {
+              setForm({ nome: '', descricao: '', preco: '', duracao_minutos: '' });
+              setError('');
+              setEditing({});
+            }}
+          >
+            Novo serviço
+          </Button>
+        }
       />
       <Input
         label="Pesquisar"
@@ -827,14 +852,17 @@ export function AdminBarberDetailsPage() {
   );
 }
 
-function AdminPlansPage() {
+export function AdminPlansPage() {
   useDocumentTitle('Planos');
   const [search, setSearch] = useState(''),
     [page, setPage] = useState(1),
     [editing, setEditing] = useState(null),
+    [actionPlan, setActionPlan] = useState(null),
     [dialog, setDialog] = useState(null),
+    [actionLoading, setActionLoading] = useState(false),
     [motivo, setMotivo] = useState(''),
     [error, setError] = useState(''),
+    [, setFieldErrors] = useState({}),
     [form, setForm] = useState({
       nome: '',
       descricao: '',
@@ -856,25 +884,28 @@ function AdminPlansPage() {
     () => adminPlanoService.listPlanos({ search, page, limit: 20, ativo: 'all' }),
     [search, page],
   );
-  const services = useRemoteData(() => servicoService.listPublic({ limit: 100 }), []),
+  const services = useRemoteData(() => servicoService.listAllPublic(), []),
     barbers = useRemoteData(() => barbeiroService.listPublic({ limit: 100 }), []);
+  const activeServices = (services.data?.data ?? []).filter(isActive);
+  const activeBarbers = (barbers.data?.data ?? []).filter(isActive);
   function edit(item) {
     setEditing(item);
     setError('');
+    setFieldErrors({});
     setForm({
       nome: item.nome,
       descricao: item.descricao ?? '',
       preco: item.preco,
-      adesaoInicio: item.adesao_inicio,
-      adesaoFim: item.adesao_fim,
-      utilizacaoInicio: item.utilizacao_inicio,
-      utilizacaoFim: item.utilizacao_fim,
-      possuiLimiteSemanal: Boolean(item.possui_limite_semanal),
-      limiteSemanal: item.limite_semanal ?? '',
-      possuiLimiteTotal: Boolean(item.possui_limite_total),
-      limiteTotal: item.limite_total ?? '',
+      adesaoInicio: item.adesaoInicio ?? '',
+      adesaoFim: item.adesaoFim ?? '',
+      utilizacaoInicio: item.utilizacaoInicio ?? '',
+      utilizacaoFim: item.utilizacaoFim ?? '',
+      possuiLimiteSemanal: item.possuiLimiteSemanal,
+      limiteSemanal: item.limiteSemanal ?? '',
+      possuiLimiteTotal: item.possuiLimiteTotal,
+      limiteTotal: item.limiteTotal ?? '',
       ativo: Boolean(item.ativo),
-      adesoesAbertas: Boolean(item.adesoes_abertas),
+      adesoesAbertas: item.adesoesAbertas,
       servicos: (item.servicos ?? []).map((s) => String(s.id)),
       barbeiros: (item.barbeiros ?? []).map((b) => String(b.id)),
     });
@@ -882,6 +913,7 @@ function AdminPlansPage() {
   function newPlan() {
     setEditing({});
     setError('');
+    setFieldErrors({});
     setForm({
       nome: '',
       descricao: '',
@@ -916,45 +948,106 @@ function AdminPlansPage() {
         : [...f.barbeiros, String(id)],
     }));
   }
+  function validatePlan(formValues) {
+    const errors = {};
+    if (!formValues.nome?.trim()) errors.nome = 'Nome do plano é obrigatório.';
+    const price = parsePrice(formValues.preco);
+    if (!price || !/^(0|[1-9]\d{0,7})(\.\d{1,2})?$/.test(price))
+      errors.preco = 'Informe um preço válido (ex.: 89,90).';
+    const requiredDates = [
+      ['adesaoInicio', 'Início da adesão'],
+      ['adesaoFim', 'Fim da adesão'],
+      ['utilizacaoInicio', 'Início da utilização'],
+      ['utilizacaoFim', 'Fim da utilização'],
+    ];
+    for (const [field, label] of requiredDates) {
+      if (!formValues[field]) errors[field] = `${label} é obrigatório.`;
+      else if (!datePattern.test(formValues[field])) errors[field] = `${label} inválido.`;
+    }
+    if (formValues.possuiLimiteSemanal) {
+      const value = Number(formValues.limiteSemanal);
+      if (!Number.isInteger(value) || value <= 0)
+        errors.limiteSemanal = 'Informe um limite semanal maior que zero.';
+    }
+    if (formValues.possuiLimiteTotal) {
+      const value = Number(formValues.limiteTotal);
+      if (!Number.isInteger(value) || value <= 0)
+        errors.limiteTotal = 'Informe um limite total maior que zero.';
+    }
+    if (!formValues.servicos.length) errors.servicos = 'Selecione ao menos um serviço.';
+    if (!formValues.barbeiros.length) errors.barbeiros = 'Selecione ao menos um profissional.';
+    return errors;
+  }
+
+  function mountPayload(formValues) {
+    const payload = {
+      nome: String(formValues.nome ?? '').trim(),
+      descricao: formValues.descricao?.trim() || null,
+      preco: parsePrice(formValues.preco),
+      adesaoInicio: formValues.adesaoInicio,
+      adesaoFim: formValues.adesaoFim,
+      utilizacaoInicio: formValues.utilizacaoInicio,
+      utilizacaoFim: formValues.utilizacaoFim,
+      possuiLimiteSemanal: Boolean(formValues.possuiLimiteSemanal),
+      possuiLimiteTotal: Boolean(formValues.possuiLimiteTotal),
+      servicos: formValues.servicos.map((id) => Number(id)),
+      barbeiros: formValues.barbeiros.map((id) => Number(id)),
+    };
+    if (formValues.possuiLimiteSemanal) payload.limiteSemanal = Number(formValues.limiteSemanal);
+    if (formValues.possuiLimiteTotal) payload.limiteTotal = Number(formValues.limiteTotal);
+    return payload;
+  }
+
   async function save(e) {
     e.preventDefault();
+    setFieldErrors({});
+    setError('');
+    const errors = validatePlan(form);
+    if (Object.keys(errors).length) {
+      setFieldErrors(errors);
+      setError('Corrija os campos destacados.');
+      return;
+    }
     try {
-      const payload = {
-        ...form,
-        preco: String(form.preco),
-        limiteSemanal: form.possuiLimiteSemanal ? Number(form.limiteSemanal) : null,
-        limiteTotal: form.possuiLimiteTotal ? Number(form.limiteTotal) : null,
-        servicos: form.servicos.map(Number),
-        barbeiros: form.barbeiros.map(Number),
-      };
+      const payload = mountPayload(form);
       if (editing.id) await adminPlanoService.updatePlan(editing.id, payload);
       else await adminPlanoService.createPlan(payload);
       setEditing(null);
       state.reload();
     } catch (e2) {
-      setError(msg(e2));
+      const apiDetails = extractFieldErrors(e2);
+      if (Object.keys(apiDetails).length) {
+        setFieldErrors(apiDetails);
+        setError(Object.values(apiDetails)[0]);
+      } else {
+        setError(msg(e2));
+      }
     }
   }
   async function act() {
-    if (!editing) return;
+    if (!actionPlan || actionLoading) return;
+    setActionLoading(true);
     try {
-      if (dialog === 'ativar') await adminPlanoService.updatePlanStatus(editing.id, 'ativar');
+      if (dialog === 'ativar') await adminPlanoService.updatePlanStatus(actionPlan.id, 'ativar');
       else if (dialog === 'desativar')
-        await adminPlanoService.updatePlanStatus(editing.id, 'desativar');
+        await adminPlanoService.updatePlanStatus(actionPlan.id, 'desativar');
       else if (dialog === 'abrir')
-        await adminPlanoService.updatePlanStatus(editing.id, 'abrir_adesoes');
+        await adminPlanoService.updatePlanStatus(actionPlan.id, 'abrir_adesoes');
       else if (dialog === 'fechar')
-        await adminPlanoService.updatePlanStatus(editing.id, 'fechar_adesoes');
+        await adminPlanoService.updatePlanStatus(actionPlan.id, 'fechar_adesoes');
       else if (dialog === 'permitir')
-        await adminPlanoService.updatePlanStatus(editing.id, 'permitir_uso');
+        await adminPlanoService.updatePlanStatus(actionPlan.id, 'permitir_uso');
       else if (dialog === 'suspender')
-        await adminPlanoService.updatePlanStatus(editing.id, 'suspender_uso', motivo.trim());
+        await adminPlanoService.updatePlanStatus(actionPlan.id, 'suspender_uso', motivo.trim());
       setDialog(null);
+      setActionPlan(null);
       setMotivo('');
       setError('');
-      state.reload();
+      await state.reload();
     } catch (e2) {
       setError(msg(e2));
+    } finally {
+      setActionLoading(false);
     }
   }
   return (
@@ -986,7 +1079,7 @@ function AdminPlansPage() {
               key: 'uso',
               label: 'Uso',
               render: (r) => (
-                <Badge tone={usoStatus(r.uso_status).tone}>{usoStatus(r.uso_status).label}</Badge>
+                <Badge tone={usoStatus(r.usoStatus).tone}>{usoStatus(r.usoStatus).label}</Badge>
               ),
             },
           ]}
@@ -998,7 +1091,8 @@ function AdminPlansPage() {
               <Button
                 variant="secondary"
                 onClick={() => {
-                  edit(r);
+                  setActionPlan(r);
+                  setError('');
                   setDialog(r.ativo ? 'desativar' : 'ativar');
                 }}
               >
@@ -1007,17 +1101,19 @@ function AdminPlansPage() {
               <Button
                 variant="secondary"
                 onClick={() => {
-                  edit(r);
-                  setDialog(r.adesoes_abertas ? 'fechar' : 'abrir');
+                  setActionPlan(r);
+                  setError('');
+                  setDialog(r.adesoesAbertas ? 'fechar' : 'abrir');
                 }}
               >
-                {r.adesoes_abertas ? 'Fechar adesões' : 'Abrir adesões'}
+                {r.adesoesAbertas ? 'Fechar adesões' : 'Abrir adesões'}
               </Button>
-              {r.uso_status === 'suspenso' ? (
+              {r.usoStatus === 'suspenso' ? (
                 <Button
                   variant="secondary"
                   onClick={() => {
-                    edit(r);
+                    setActionPlan(r);
+                    setError('');
                     setDialog('permitir');
                   }}
                 >
@@ -1027,7 +1123,8 @@ function AdminPlansPage() {
                 <Button
                   variant="secondary"
                   onClick={() => {
-                    edit(r);
+                    setActionPlan(r);
+                    setError('');
                     setDialog('suspender');
                     setMotivo('');
                   }}
@@ -1136,7 +1233,7 @@ function AdminPlansPage() {
           )}
           <fieldset className="card">
             <legend>Serviços incluídos</legend>
-            {(services.data?.data ?? []).map((s) => (
+            {activeServices.map((s) => (
               <label key={s.id} className="cluster">
                 <input
                   type="checkbox"
@@ -1149,7 +1246,7 @@ function AdminPlansPage() {
           </fieldset>
           <fieldset className="card">
             <legend>Profissionais</legend>
-            {(barbers.data?.data ?? []).map((b) => (
+            {activeBarbers.map((b) => (
               <label key={b.id} className="cluster">
                 <input
                   type="checkbox"
@@ -1164,8 +1261,23 @@ function AdminPlansPage() {
           <Button type="submit">Salvar</Button>
         </form>
       </Dialog>
-      <Dialog open={Boolean(dialog)} onClose={() => setDialog(null)} title="Confirmar operação">
+      <Dialog
+        open={Boolean(dialog)}
+        onClose={() => {
+          if (actionLoading) return;
+          setDialog(null);
+          setActionPlan(null);
+        }}
+        title="Confirmar operação"
+      >
         <div className="stack">
+          {dialog === 'desativar' && (
+            <p>
+              Deseja desativar este plano? Isso impede novas adesões, mas preserva o histórico e as
+              assinaturas existentes.
+            </p>
+          )}
+          {dialog === 'ativar' && <p>Deseja ativar este plano?</p>}
           {dialog === 'suspender' && (
             <Input
               label="Motivo da suspensão"
@@ -1179,11 +1291,18 @@ function AdminPlansPage() {
             <Button
               variant="danger"
               onClick={act}
-              disabled={dialog === 'suspender' && !motivo.trim()}
+              disabled={actionLoading || (dialog === 'suspender' && !motivo.trim())}
             >
-              Confirmar
+              {actionLoading ? 'Processando…' : 'Confirmar'}
             </Button>
-            <Button variant="secondary" onClick={() => setDialog(null)}>
+            <Button
+              variant="secondary"
+              disabled={actionLoading}
+              onClick={() => {
+                setDialog(null);
+                setActionPlan(null);
+              }}
+            >
               Voltar
             </Button>
           </div>
@@ -1193,7 +1312,7 @@ function AdminPlansPage() {
   );
 }
 
-function AdminSubscriptionsPage() {
+export function AdminSubscriptionsPage() {
   useDocumentTitle('Assinaturas');
   const [page, setPage] = useState(1),
     [selected, setSelected] = useState(null),

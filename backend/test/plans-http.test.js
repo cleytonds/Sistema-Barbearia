@@ -23,10 +23,12 @@ let adminId;
 let clientId;
 let otherClientId;
 let barberUserId;
+let barberToken;
 let barberId;
 let serviceId;
 let service2Id;
 let planId;
+let adminSubscriptionId;
 let adminToken;
 let clientToken;
 let otherClientToken;
@@ -94,7 +96,7 @@ test.before(async () => {
   ({ id: adminId, token: adminToken } = await addUser('admin', 'admin'));
   ({ id: clientId, token: clientToken } = await addUser('cliente', 'cliente'));
   ({ id: otherClientId, token: otherClientToken } = await addUser('cliente', 'cliente2'));
-  ({ id: barberUserId } = await addUser('barbeiro', 'barbeiro'));
+  ({ id: barberUserId, token: barberToken } = await addUser('barbeiro', 'barbeiro'));
   const [barberResult] = await pool.execute('INSERT INTO barbeiros(usuario_id) VALUES(?)', [
     barberUserId,
   ]);
@@ -185,6 +187,12 @@ test('público: lista planos ativos e exige campos essenciais', async () => {
   const body = await response.json();
   assert.ok(Array.isArray(body.data));
   assert.ok(body.pagination.total >= 0);
+  for (const plan of body.data) {
+    assert.equal(typeof plan.id, 'string');
+    assert.equal(plan.criado_por, undefined);
+    assert.equal(plan.uso_suspensao_motivo, undefined);
+    assert.equal(plan.criado_em, undefined);
+  }
 });
 
 test('público: GET /planos/:id retorna plano ou 404', async () => {
@@ -209,6 +217,15 @@ test('admin: cria plano com 201 e validações', async () => {
   assert.equal(body.data.servicos.length, 1);
   assert.equal(body.data.barbeiros.length, 1);
 
+  const publicDetailResponse = await api(`/planos/${planId}`);
+  assert.equal(publicDetailResponse.status, 200);
+  const publicDetail = (await publicDetailResponse.json()).data;
+  assert.deepEqual(publicDetail.servicos, [{ id: String(serviceId), nome: `${marker} Serviço A` }]);
+  assert.deepEqual(publicDetail.barbeiros, [{ id: String(barberId), nome: `${marker} barbeiro` }]);
+  assert.equal(publicDetail.barbeiros[0].email, undefined);
+  assert.equal(publicDetail.barbeiros[0].telefone, undefined);
+  assert.equal(publicDetail.barbeiros[0].usuario_id, undefined);
+
   const invalid = await api('/admin/planos', {
     method: 'POST',
     token: adminToken,
@@ -218,6 +235,8 @@ test('admin: cria plano com 201 e validações', async () => {
 
   const noAuth = await api('/admin/planos', { method: 'POST', body: planPayload() });
   assert.equal(noAuth.status, 401);
+  const barber = await api('/admin/planos', { token: barberToken });
+  assert.equal(barber.status, 403);
 });
 
 test('admin: lista e atualiza plano', async () => {
@@ -238,28 +257,98 @@ test('admin: lista e atualiza plano', async () => {
 });
 
 test('admin: altera status do plano', async () => {
-  const suspend = await api(`/admin/planos/${planId}/status`, {
+  const suspend = await api(`/admin/planos/${planId}/uso`, {
     method: 'PATCH',
     token: adminToken,
-    body: { acao: 'suspender_uso', motivo: 'Manutenção' },
+    body: { permitido: false, motivo: 'Manutenção' },
   });
   assert.equal(suspend.status, 200);
   assert.equal((await suspend.json()).data.uso_status, 'suspenso');
 
-  const allow = await api(`/admin/planos/${planId}/status`, {
+  const allow = await api(`/admin/planos/${planId}/uso`, {
     method: 'PATCH',
     token: adminToken,
-    body: { acao: 'permitir_uso' },
+    body: { permitido: true },
   });
   assert.equal(allow.status, 200);
   assert.equal((await allow.json()).data.uso_status, 'permitido');
+
+  const close = await api(`/admin/planos/${planId}/adesoes`, {
+    method: 'PATCH',
+    token: adminToken,
+    body: { abertas: false },
+  });
+  assert.equal(close.status, 200);
+  const open = await api(`/admin/planos/${planId}/adesoes`, {
+    method: 'PATCH',
+    token: adminToken,
+    body: { abertas: true },
+  });
+  assert.equal(open.status, 200);
+
+  const deactivate = await api(`/admin/planos/${planId}/status`, {
+    method: 'PATCH',
+    token: adminToken,
+    body: { ativo: false },
+  });
+  assert.equal(deactivate.status, 200);
+  assert.equal(Boolean((await deactivate.json()).data.ativo), false);
+
+  const [[preservedPlan]] = await pool.execute('SELECT ativo FROM planos WHERE id=?', [planId]);
+  const [[history]] = await pool.execute(
+    "SELECT COUNT(*) AS total FROM historico_planos WHERE plano_id=? AND tipo_evento='plano_desativado'",
+    [planId],
+  );
+  assert.equal(Boolean(preservedPlan.ativo), false);
+  assert.equal(Number(history.total), 1);
+  assert.equal((await api(`/planos/${planId}`)).status, 404);
+  assert.equal((await api(`/admin/planos/${planId}`, { token: adminToken })).status, 200);
+
+  const stringBoolean = await api(`/admin/planos/${planId}/status`, {
+    method: 'PATCH',
+    token: adminToken,
+    body: { ativo: 'false' },
+  });
+  assert.equal(stringBoolean.status, 422);
+  assert.equal(
+    (
+      await api(`/admin/planos/${planId}/status`, {
+        method: 'PATCH',
+        body: { ativo: true },
+      })
+    ).status,
+    401,
+  );
+  assert.equal(
+    (
+      await api(`/admin/planos/${planId}/status`, {
+        method: 'PATCH',
+        token: barberToken,
+        body: { ativo: true },
+      })
+    ).status,
+    403,
+  );
+
+  const activate = await api(`/admin/planos/${planId}/status`, {
+    method: 'PATCH',
+    token: adminToken,
+    body: { ativo: true },
+  });
+  assert.equal(activate.status, 200);
+  assert.equal(Boolean((await activate.json()).data.ativo), true);
+
+  const detail = await api(`/admin/planos/${planId}`, { token: adminToken });
+  const subscribers = await api(`/admin/planos/${planId}/assinantes`, { token: adminToken });
+  assert.equal(detail.status, 200);
+  assert.equal(subscribers.status, 200);
 });
 
 // ===========================================================================
 // Admin — assinaturas
 // ===========================================================================
 test('admin: cria assinatura administrativa e lista', async () => {
-  const create = await api('/admin/assinaturas', {
+  const create = await api('/admin/assinaturas-planos', {
     method: 'POST',
     token: adminToken,
     body: {
@@ -272,30 +361,70 @@ test('admin: cria assinatura administrativa e lista', async () => {
   });
   assert.equal(create.status, 201);
   const created = (await create.json()).data;
+  adminSubscriptionId = created.id;
   assert.equal(created.status, 'aguardando_pagamento');
   assert.equal(created.idempotency_key_hash, undefined);
   assert.equal(created.idempotency_payload_hash, undefined);
 
-  const list = await api('/admin/assinaturas', { token: adminToken });
+  const list = await api('/admin/assinaturas-planos', { token: adminToken });
   assert.equal(list.status, 200);
   const listBody = await list.json();
   assert.ok(listBody.data.some((item) => String(item.id) === String(created.id)));
 });
 
 test('admin: altera status da assinatura', async () => {
-  const list = await api('/admin/assinaturas', { token: adminToken });
+  const list = await api('/admin/assinaturas-planos', { token: adminToken });
   const assinatura = (await list.json()).data.find(
     (item) => String(item.cliente_id) === String(clientId),
   );
   assert.ok(assinatura);
 
-  const cancel = await api(`/admin/assinaturas/${assinatura.id}/status`, {
-    method: 'PATCH',
+  const payment = await api(
+    `/admin/assinaturas-planos/${adminSubscriptionId}/confirmar-pagamento`,
+    {
+      method: 'PUT',
+      token: adminToken,
+      body: {
+        referencia: '2026-09-01',
+        valor: '129.90',
+        forma: 'presencial',
+      },
+    },
+  );
+  assert.equal(payment.status, 200);
+
+  const suspend = await api(`/admin/assinaturas-planos/${assinatura.id}/suspender`, {
+    method: 'PUT',
     token: adminToken,
-    body: { acao: 'cancelar', motivo: 'Pedido do cliente' },
+    body: { motivo: 'Pausa administrativa' },
+  });
+  assert.equal(suspend.status, 200);
+  const reactivate = await api(`/admin/assinaturas-planos/${assinatura.id}/reativar`, {
+    method: 'PUT',
+    token: adminToken,
+    body: { motivo: 'Retomada administrativa' },
+  });
+  assert.equal(reactivate.status, 200);
+
+  const cancel = await api(`/admin/assinaturas-planos/${assinatura.id}/cancelar`, {
+    method: 'PUT',
+    token: adminToken,
+    body: { motivo: 'Pedido do cliente' },
   });
   assert.equal(cancel.status, 200);
   assert.equal((await cancel.json()).data.status, 'cancelada');
+
+  const detail = await api(`/admin/assinaturas-planos/${assinatura.id}`, { token: adminToken });
+  const usages = await api(`/admin/assinaturas-planos/${assinatura.id}/usos`, {
+    token: adminToken,
+  });
+  const history = await api(`/admin/assinaturas-planos/${assinatura.id}/historico`, {
+    token: adminToken,
+  });
+  assert.equal(detail.status, 200);
+  assert.equal(usages.status, 200);
+  assert.equal(history.status, 200);
+  assert.ok((await history.json()).data.length > 0);
 });
 
 // ===========================================================================
@@ -304,7 +433,7 @@ test('admin: altera status da assinatura', async () => {
 test('cliente: assina plano com idempotência e my-plan/usos', async () => {
   const key = randomUUID();
   const body = signPayload();
-  const response = await api(`/planos/${planId}/assinar`, {
+  const response = await api(`/planos/${planId}/solicitacoes`, {
     method: 'POST',
     token: otherClientToken,
     body,
@@ -315,7 +444,7 @@ test('cliente: assina plano com idempotência e my-plan/usos', async () => {
   assert.equal(created.status, 'aguardando_pagamento');
   assert.equal(created.idempotency_key_hash, undefined);
 
-  const replay = await api(`/planos/${planId}/assinar`, {
+  const replay = await api(`/planos/${planId}/solicitacoes`, {
     method: 'POST',
     token: otherClientToken,
     body,
@@ -323,6 +452,14 @@ test('cliente: assina plano com idempotência e my-plan/usos', async () => {
   });
   assert.equal(replay.status, 200);
   assert.equal((await replay.json()).data.id, created.id);
+
+  const conflict = await api(`/planos/${planId}/solicitacoes`, {
+    method: 'POST',
+    token: otherClientToken,
+    body: signPayload({ fimEm: '2026-09-29' }),
+    key,
+  });
+  assert.equal(conflict.status, 409);
 
   const myPlan = await api('/meu-plano', { token: otherClientToken });
   assert.equal(myPlan.status, 200);
@@ -334,7 +471,13 @@ test('cliente: assina plano com idempotência e my-plan/usos', async () => {
 });
 
 test('cliente: assinatura sem Idempotency-Key é rejeitada', async () => {
-  const response = await api(`/planos/${planId}/assinar`, {
+  const noAuth = await api(`/planos/${planId}/solicitacoes`, {
+    method: 'POST',
+    body: signPayload(),
+    key: randomUUID(),
+  });
+  assert.equal(noAuth.status, 401);
+  const response = await api(`/planos/${planId}/solicitacoes`, {
     method: 'POST',
     token: otherClientToken,
     body: signPayload(),
@@ -342,17 +485,14 @@ test('cliente: assinatura sem Idempotency-Key é rejeitada', async () => {
   assert.equal(response.status, 422);
 });
 
-test('cliente: cancelar próprio plano', async () => {
-  const myPlan = await api('/meu-plano', { token: otherClientToken });
-  const assinatura = (await myPlan.json()).data;
-  const cancel = await api('/meu-plano/cancelar', {
+test('cliente: rejeita campos controlados pelo servidor', async () => {
+  const invalid = await api(`/planos/${planId}/solicitacoes`, {
     method: 'POST',
     token: otherClientToken,
-    body: { motivo: 'Não quero mais' },
+    key: randomUUID(),
+    body: { ...signPayload(), clienteId: clientId, status: 'ativa' },
   });
-  assert.equal(cancel.status, 200);
-  assert.equal((await cancel.json()).data.status, 'cancelada');
-  assert.equal(assinatura.idempotency_key_hash, undefined);
+  assert.equal(invalid.status, 422);
 });
 
 test('cliente: não acessa admin e admin não acessa meu-plano', async () => {

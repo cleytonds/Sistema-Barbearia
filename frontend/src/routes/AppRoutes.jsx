@@ -90,7 +90,15 @@ export function AppRoutes() {
         </Route>
         <Route element={<ProtectedRoute />}>
           <Route element={<RoleRoute roles={['barbeiro']} />}>
-            <Route element={<OperationalLayout area="Área do barbeiro" links={barberLinks} />}>
+            <Route
+              element={
+                <OperationalLayout
+                  area="Área do barbeiro"
+                  homePath="/barbeiro"
+                  links={barberLinks}
+                />
+              }
+            >
               <Route path="/barbeiro" element={<BarberDashboardPage />} />
               <Route path="/barbeiro/agenda" element={<BarberAgendaPage />} />
               <Route path="/barbeiro/agendamentos/:id" element={<BarberAppointmentDetailsPage />} />
@@ -100,7 +108,11 @@ export function AppRoutes() {
             </Route>
           </Route>
           <Route element={<RoleRoute roles={['admin']} />}>
-            <Route element={<OperationalLayout area="Administração" links={adminLinks} />}>
+            <Route
+              element={
+                <OperationalLayout area="Administração" homePath="/admin" links={adminLinks} />
+              }
+            >
               <Route path="/admin" element={<AdminDashboardPage />} />
               <Route path="/admin/agendamentos" element={<AdminAppointmentsPage />} />
               <Route path="/admin/agendamentos/novo" element={<AdminCreateAppointmentPage />} />

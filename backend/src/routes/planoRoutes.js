@@ -16,7 +16,7 @@ export const planoRoutes = Router();
 planoRoutes.get('/', publicPlanListValidator, validate, asyncHandler(planoController.listPublic));
 planoRoutes.get('/:id', planIdValidator, validate, asyncHandler(planoController.getPublic));
 planoRoutes.post(
-  '/:id/assinar',
+  '/:id/solicitacoes',
   auth(),
   requireCliente(),
   signPlanValidator,

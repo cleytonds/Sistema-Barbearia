@@ -291,6 +291,26 @@ export async function listarMeusUsos({ clientId, assinaturaId }) {
   return usos;
 }
 
+export async function listarAssinantesDoPlano({ planoId }) {
+  await planoServiceExists(planoId);
+  return assinaturaPlanoRepository.listarAssinantesDoPlano(planoId);
+}
+
+async function planoServiceExists(planoId) {
+  const plano = await planoRepository.buscarPlanoPorId(planoId);
+  if (!plano) throw new AppError('Plano nÃ£o encontrado.', 404, 'PLAN_NOT_FOUND');
+}
+
+export async function listarUsosDaAssinaturaAdmin({ id }) {
+  await obterAssinaturaAdmin({ id });
+  return usoPlanoRepository.listarUsosDaAssinatura(id);
+}
+
+export async function listarHistoricoDaAssinaturaAdmin({ id }) {
+  await obterAssinaturaAdmin({ id });
+  return historicoPlanoRepository.listarHistoricoDaAssinatura(id);
+}
+
 async function mutarStatusAssinatura({ id, status, motivo, actorId, evento, nota, requestId }) {
   if (!motivo?.trim()) throw new AppError('Motivo obrigatório.', 422, 'VALIDATION_ERROR');
   const logContext = { requestId, usuarioId: actorId, operation: 'subscription_status' };

@@ -25,8 +25,9 @@ export const createAdminAppointmentValidator = [
 ];
 export const adminCancelValidator = [
   ...appointmentIdValidator,
-  strict(['motivo']),
+  strict(['motivo', 'responsabilidade']),
   body('motivo').isString().trim().isLength({ min: 3, max: CANCELLATION_REASON_MAX_LENGTH }),
+  body('responsabilidade').isIn(['cliente', 'barbearia']),
 ];
 export const adminRescheduleValidator = [
   ...appointmentIdValidator,

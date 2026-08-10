@@ -7,6 +7,10 @@ process.env.NODE_ENV = 'test';
 const { pool } = await import('../src/config/database.js');
 const planoService = await import('../src/services/planoService.js');
 const assinaturaService = await import('../src/services/assinaturaPlanoService.js');
+const pagamentoService = await import('../src/services/pagamentoPlanoService.js');
+const coberturaService = await import('../src/services/coberturaPlanoService.js');
+const usoService = await import('../src/services/usoPlanoService.js');
+const { runTransactionWithRetry } = await import('../src/database/transactionRetry.js');
 
 const suffix = randomUUID().replaceAll('-', '').slice(0, 8);
 const marker = `BSV-${suffix}`;
@@ -117,6 +121,10 @@ test.after(async () => {
     [ids.client, ids.client2],
   );
   await pool.execute(`DELETE FROM assinaturas_planos WHERE cliente_id IN (?, ?)`, [
+    ids.client,
+    ids.client2,
+  ]);
+  await pool.execute('DELETE FROM agendamentos WHERE cliente_id IN (?, ?)', [
     ids.client,
     ids.client2,
   ]);
@@ -593,5 +601,453 @@ test('assinatura service: cancela não reabre assinatura terminal', async () => 
         requestId: `${marker}-sub-terminal3`,
       }),
     (err) => err.code === 'INVALID_SUBSCRIPTION_TRANSITION',
+  );
+});
+
+async function insertAppointment(clientId = ids.client2) {
+  const [result] = await pool.execute(
+    `INSERT INTO agendamentos (
+      cliente_id, barbeiro_id, servico_id, criado_por, origem, inicio_em, fim_em,
+      fim_ocupacao_em, preco, duracao_minutos, buffer_minutos, status
+    ) VALUES (?, ?, ?, ?, 'admin', '2026-09-10 12:00:00', '2026-09-10 12:30:00',
+      '2026-09-10 12:30:00', 40.00, 30, 0, 'confirmado')`,
+    [clientId, ids.barber, ids.service, ids.admin],
+  );
+  return result.insertId;
+}
+
+let blockCSubscription;
+let blockCPayment;
+
+test('pagamento: cria pendente, evita duplicidade e confirma ativando assinatura', async () => {
+  blockCSubscription = await assinaturaService.criarAssinaturaAdministrativa({
+    data: subscriptionData({
+      clientId: ids.client2,
+      inicioEm: '2026-09-01',
+      fimEm: '2026-09-30',
+    }),
+    actorId: ids.admin,
+    requestId: `${marker}-payment-sub`,
+  });
+  const data = {
+    assinaturaId: blockCSubscription,
+    referenciaMes: '2026-09-01',
+    periodoInicio: '2026-09-01',
+    periodoFim: '2026-09-30',
+    valor: '129.90',
+    forma: 'presencial',
+  };
+  const first = await pagamentoService.criarOuObterPagamentoPendente({
+    data,
+    actorId: ids.admin,
+    requestId: `${marker}-payment-create`,
+  });
+  blockCPayment = first.pagamento.id;
+  assert.equal(first.criado, true);
+  assert.equal(first.pagamento.status, 'pendente');
+  const duplicate = await pagamentoService.criarOuObterPagamentoPendente({
+    data,
+    actorId: ids.admin,
+    requestId: `${marker}-payment-duplicate`,
+  });
+  assert.equal(duplicate.pagamento.id, blockCPayment);
+  assert.equal(duplicate.criado, false);
+
+  const confirmed = await pagamentoService.confirmarPagamento({
+    id: blockCPayment,
+    actorId: ids.admin,
+    requestId: `${marker}-payment-confirm`,
+  });
+  assert.equal(confirmed.pagamento.status, 'confirmado');
+  assert.equal(
+    (await assinaturaService.obterAssinaturaAdmin({ id: blockCSubscription })).status,
+    'ativa',
+  );
+  const replay = await pagamentoService.confirmarPagamento({
+    id: blockCPayment,
+    actorId: ids.admin,
+    requestId: `${marker}-payment-replay`,
+  });
+  assert.equal(replay.replay, true);
+});
+
+test('pagamento: competência e valor inválidos são rejeitados', async () => {
+  await assert.rejects(
+    () =>
+      pagamentoService.criarOuObterPagamentoPendente({
+        data: {
+          assinaturaId: blockCSubscription,
+          referenciaMes: '2026-09-02',
+          periodoInicio: '2026-09-01',
+          periodoFim: '2026-09-30',
+          valor: '0.00',
+        },
+        actorId: ids.admin,
+      }),
+    (error) => ['INVALID_PAYMENT_REFERENCE', 'INVALID_PAYMENT_VALUE'].includes(error.code),
+  );
+});
+
+test('pagamento: confirmado não pode ser cancelado e cancelado não pode ser confirmado', async () => {
+  await assert.rejects(
+    () =>
+      pagamentoService.cancelarPagamento({
+        id: blockCPayment,
+        actorId: ids.admin,
+        motivo: 'Incorreto',
+      }),
+    (error) => error.code === 'INVALID_PAYMENT_TRANSITION',
+  );
+  const pending = await pagamentoService.criarOuObterPagamentoPendente({
+    data: {
+      assinaturaId: blockCSubscription,
+      referenciaMes: '2026-10-01',
+      periodoInicio: '2026-10-01',
+      periodoFim: '2026-10-31',
+      valor: '129.90',
+    },
+    actorId: ids.admin,
+  });
+  await pagamentoService.cancelarPagamento({
+    id: pending.pagamento.id,
+    actorId: ids.admin,
+    motivo: 'Competência cancelada',
+  });
+  await assert.rejects(
+    () => pagamentoService.confirmarPagamento({ id: pending.pagamento.id, actorId: ids.admin }),
+    (error) => error.code === 'INVALID_PAYMENT_TRANSITION',
+  );
+});
+
+test('cobertura: plano válido retorna snapshots, competência e contagens', async () => {
+  const coverage = await coberturaService.decidirCobertura({
+    clienteId: ids.client2,
+    servicoId: ids.service,
+    barbeiroId: ids.barber,
+    data: '2026-09-10',
+  });
+  assert.equal(coverage.tipoCobranca, 'plano');
+  assert.equal(coverage.assinaturaId, String(blockCSubscription));
+  assert.equal(coverage.semanaInicio, '2026-09-07');
+});
+
+test('cobertura: deriva motivos sem aceitar decisão externa', async () => {
+  assert.equal(
+    (
+      await coberturaService.decidirCobertura({
+        clienteId: ids.admin,
+        servicoId: ids.service,
+        barbeiroId: ids.barber,
+        data: '2026-09-10',
+      })
+    ).motivo,
+    'SEM_ASSINATURA_ATIVA',
+  );
+  assert.equal(
+    (
+      await coberturaService.decidirCobertura({
+        clienteId: ids.client2,
+        servicoId: ids.service,
+        barbeiroId: ids.barber,
+        data: '2027-01-10',
+      })
+    ).motivo,
+    'FORA_DO_PERIODO',
+  );
+  assert.equal(
+    (
+      await coberturaService.decidirCobertura({
+        clienteId: ids.client2,
+        servicoId: '999999999',
+        barbeiroId: ids.barber,
+        data: '2026-09-10',
+      })
+    ).motivo,
+    'SERVICO_NAO_INCLUIDO',
+  );
+  assert.equal(
+    (
+      await coberturaService.decidirCobertura({
+        clienteId: ids.client2,
+        servicoId: ids.service,
+        barbeiroId: '999999999',
+        data: '2026-09-10',
+      })
+    ).motivo,
+    'PROFISSIONAL_NAO_INCLUIDO',
+  );
+});
+
+test('uso: exige transação, reserva uma vez e consome idempotentemente', async () => {
+  const appointmentId = await insertAppointment();
+  await assert.rejects(
+    () =>
+      usoService.reservarUso({
+        assinatura: { id: blockCSubscription },
+        agendamentoId: appointmentId,
+        data: '2026-09-10',
+        actorId: ids.admin,
+      }),
+    (error) => error.code === 'INVALID_TRANSACTION_CONTEXT',
+  );
+  await runTransactionWithRetry({
+    operation: async ({ connection, transactionContext }) => {
+      const subscription = await (
+        await import('../src/repositories/assinaturaPlanoRepository.js')
+      ).buscarAssinaturaPorIdForUpdate(blockCSubscription, connection);
+      const reserved = await usoService.reservarUso({
+        assinatura: subscription,
+        agendamentoId: appointmentId,
+        data: '2026-09-10',
+        actorId: ids.admin,
+        connection,
+        transactionContext,
+      });
+      assert.equal(reserved.replay, false);
+      assert.equal(
+        (
+          await usoService.reservarUso({
+            assinatura: subscription,
+            agendamentoId: appointmentId,
+            data: '2026-09-10',
+            actorId: ids.admin,
+            connection,
+            transactionContext,
+          })
+        ).replay,
+        true,
+      );
+      assert.equal(
+        (
+          await usoService.consumirUso({
+            agendamentoId: appointmentId,
+            actorId: ids.admin,
+            connection,
+            transactionContext,
+          })
+        ).replay,
+        false,
+      );
+      assert.equal(
+        (
+          await usoService.consumirUso({
+            agendamentoId: appointmentId,
+            actorId: ids.admin,
+            connection,
+            transactionContext,
+          })
+        ).replay,
+        true,
+      );
+    },
+  });
+});
+
+test('uso: libera idempotentemente e exige motivo administrativo', async () => {
+  const appointmentId = await insertAppointment();
+  await runTransactionWithRetry({
+    operation: async ({ connection, transactionContext }) => {
+      const subscription = await (
+        await import('../src/repositories/assinaturaPlanoRepository.js')
+      ).buscarAssinaturaPorIdForUpdate(blockCSubscription, connection);
+      await usoService.reservarUso({
+        assinatura: subscription,
+        agendamentoId: appointmentId,
+        data: '2026-09-11',
+        actorId: ids.admin,
+        connection,
+        transactionContext,
+      });
+      await assert.rejects(
+        () =>
+          usoService.liberarUso({
+            agendamentoId: appointmentId,
+            actorId: ids.admin,
+            administrativo: true,
+            connection,
+            transactionContext,
+          }),
+        (error) => error.code === 'VALIDATION_ERROR',
+      );
+      assert.equal(
+        (
+          await usoService.liberarUso({
+            agendamentoId: appointmentId,
+            actorId: ids.admin,
+            administrativo: true,
+            motivo: 'Responsabilidade da barbearia',
+            connection,
+            transactionContext,
+          })
+        ).replay,
+        false,
+      );
+      assert.equal(
+        (
+          await usoService.liberarUso({
+            agendamentoId: appointmentId,
+            actorId: ids.admin,
+            administrativo: true,
+            motivo: 'Responsabilidade da barbearia',
+            connection,
+            transactionContext,
+          })
+        ).replay,
+        true,
+      );
+    },
+  });
+});
+
+test('uso: reagendamento mantém reserva ou libera ao perder cobertura', async () => {
+  const appointmentId = await insertAppointment();
+  await runTransactionWithRetry({
+    operation: async ({ connection, transactionContext }) => {
+      const subscription = await (
+        await import('../src/repositories/assinaturaPlanoRepository.js')
+      ).buscarAssinaturaPorIdForUpdate(blockCSubscription, connection);
+      await usoService.reservarUso({
+        assinatura: subscription,
+        agendamentoId: appointmentId,
+        data: '2026-09-12',
+        actorId: ids.admin,
+        connection,
+        transactionContext,
+      });
+      const moved = await usoService.atualizarUsoNoReagendamento({
+        agendamentoId: appointmentId,
+        assinatura: subscription,
+        data: '2026-09-15',
+        continuaCoberto: true,
+        actorId: ids.admin,
+        connection,
+        transactionContext,
+      });
+      assert.equal(moved.semanaInicio, '2026-09-14');
+      assert.equal(
+        (
+          await usoService.atualizarUsoNoReagendamento({
+            agendamentoId: appointmentId,
+            assinatura: subscription,
+            data: '2026-10-01',
+            continuaCoberto: false,
+            actorId: ids.admin,
+            connection,
+            transactionContext,
+          })
+        ).replay,
+        false,
+      );
+    },
+  });
+});
+
+test('cobertura: pagamento pendente e plano suspenso permanecem avulsos', async () => {
+  const pendingId = await assinaturaService.criarAssinaturaAdministrativa({
+    data: subscriptionData({ clientId: ids.client2, inicioEm: '2026-10-01', fimEm: '2026-10-31' }),
+    actorId: ids.admin,
+  });
+  await pool.execute("UPDATE assinaturas_planos SET status='ativa', ativada_em=NOW(6) WHERE id=?", [
+    pendingId,
+  ]);
+  assert.equal(
+    (
+      await coberturaService.decidirCobertura({
+        clienteId: ids.client2,
+        servicoId: ids.service,
+        barbeiroId: ids.barber,
+        data: '2026-10-10',
+      })
+    ).motivo,
+    'PAGAMENTO_PENDENTE',
+  );
+  await planoService.suspenderUso({
+    id: ids.plan,
+    actorId: ids.admin,
+    motivo: 'Suspensão de teste',
+  });
+  assert.equal(
+    (
+      await coberturaService.decidirCobertura({
+        clienteId: ids.client2,
+        servicoId: ids.service,
+        barbeiroId: ids.barber,
+        data: '2026-09-10',
+      })
+    ).motivo,
+    'PLANO_SUSPENSO',
+  );
+  await planoService.permitirUso({ id: ids.plan, actorId: ids.admin });
+});
+
+test('cobertura: limites semanal, total e flags ilimitadas são respeitados', async () => {
+  await pool.execute(
+    `UPDATE assinaturas_planos SET possui_limite_semanal_snapshot=TRUE,
+      limite_semanal_snapshot=1, possui_limite_total_snapshot=TRUE,
+      limite_total_snapshot=1 WHERE id=?`,
+    [blockCSubscription],
+  );
+  const weekly = await coberturaService.decidirCobertura({
+    clienteId: ids.client2,
+    servicoId: ids.service,
+    barbeiroId: ids.barber,
+    data: '2026-09-10',
+  });
+  assert.equal(weekly.motivo, 'LIMITE_SEMANAL_ATINGIDO');
+  await pool.execute(
+    `UPDATE assinaturas_planos SET possui_limite_semanal_snapshot=FALSE,
+      limite_semanal_snapshot=NULL WHERE id=?`,
+    [blockCSubscription],
+  );
+  const total = await coberturaService.decidirCobertura({
+    clienteId: ids.client2,
+    servicoId: ids.service,
+    barbeiroId: ids.barber,
+    data: '2026-09-10',
+  });
+  assert.equal(total.motivo, 'LIMITE_TOTAL_ATINGIDO');
+  await pool.execute(
+    `UPDATE assinaturas_planos SET possui_limite_total_snapshot=FALSE,
+      limite_total_snapshot=NULL WHERE id=?`,
+    [blockCSubscription],
+  );
+  assert.equal(
+    (
+      await coberturaService.decidirCobertura({
+        clienteId: ids.client2,
+        servicoId: ids.service,
+        barbeiroId: ids.barber,
+        data: '2026-09-10',
+      })
+    ).tipoCobranca,
+    'plano',
+  );
+});
+
+test('pagamento: falha de histórico ou autor inválido reverte confirmação e ativação', async () => {
+  const subscriptionId = await assinaturaService.criarAssinaturaAdministrativa({
+    data: subscriptionData({ clientId: ids.client2, inicioEm: '2026-11-01', fimEm: '2026-11-30' }),
+    actorId: ids.admin,
+  });
+  const pending = await pagamentoService.criarOuObterPagamentoPendente({
+    data: {
+      assinaturaId: subscriptionId,
+      referenciaMes: '2026-11-01',
+      periodoInicio: '2026-11-01',
+      periodoFim: '2026-11-30',
+      valor: '129.90',
+    },
+    actorId: ids.admin,
+  });
+  await assert.rejects(() =>
+    pagamentoService.confirmarPagamento({ id: pending.pagamento.id, actorId: '999999999' }),
+  );
+  assert.equal(
+    (await pagamentoService.listarPagamentos({ assinaturaId: subscriptionId }))[0].status,
+    'pendente',
+  );
+  assert.equal(
+    (await assinaturaService.obterAssinaturaAdmin({ id: subscriptionId })).status,
+    'aguardando_pagamento',
   );
 });

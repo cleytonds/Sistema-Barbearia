@@ -18,12 +18,13 @@ function Navigation({ links, close }) {
     </nav>
   );
 }
-export function OperationalLayout({ area, links }) {
+export function OperationalLayout({ area, homePath, links }) {
   const [open, setOpen] = useState(false);
   const trigger = useRef(null);
   const drawer = useRef(null);
   const { usuario, logout, hasRole } = useAuth();
   const navigate = useNavigate();
+  const areaHomePath = homePath ?? links[0]?.to ?? '/';
   useEffect(() => {
     if (!open) return undefined;
     drawer.current?.querySelector('a')?.focus();
@@ -54,7 +55,7 @@ export function OperationalLayout({ area, links }) {
   }
   const sidebar = (
     <>
-      <BrandMark variant="header" />
+      <BrandMark variant="header" to={areaHomePath} />
       <p className="operational-role">{area}</p>
       <Navigation links={links} close={() => setOpen(false)} />
       {hasRole('barbeiro') && hasRole('admin') && (

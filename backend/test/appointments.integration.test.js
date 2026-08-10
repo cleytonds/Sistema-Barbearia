@@ -130,57 +130,86 @@ test.before(async () => {
 });
 
 test.after(async () => {
-  await pool.execute(
-    `DELETE h FROM historico_agendamentos h INNER JOIN agendamentos a
-    ON a.id=h.agendamento_id WHERE a.barbeiro_id IN (?,?)`,
-    [barberId, secondBarberId],
-  );
-  await pool.execute('DELETE FROM agendamentos WHERE barbeiro_id=?', [barberId]);
-  await pool.execute('DELETE FROM agendamentos WHERE barbeiro_id=?', [secondBarberId]);
-  await pool.execute('DELETE FROM horarios_trabalho WHERE barbeiro_id IN (?,?)', [
-    barberId,
-    secondBarberId,
-  ]);
-  await pool.execute('DELETE FROM barbeiro_servicos WHERE barbeiro_id IN (?,?)', [
-    barberId,
-    secondBarberId,
-  ]);
-  await pool.execute('DELETE FROM barbeiros WHERE id IN (?,?)', [barberId, secondBarberId]);
-  await pool.execute('DELETE FROM servicos WHERE id=?', [serviceId]);
-  await pool.execute('DELETE FROM usuarios WHERE id IN (?,?,?,?,?)', [
-    adminId,
-    clientId,
-    otherClientId,
-    barberUserId,
-    secondBarberUserId,
-  ]);
-  await pool.execute(
-    `UPDATE configuracoes SET nome_barbearia=?,telefone=?,endereco=?,fuso_horario=?,
-    tempo_minimo_cancelamento_horas=?,antecedencia_maxima_dias=?,intervalo_entre_atendimentos_minutos=? WHERE id=1`,
-    [
-      originalSettings.nome_barbearia,
-      originalSettings.telefone,
-      originalSettings.endereco,
-      originalSettings.fuso_horario,
-      originalSettings.tempo_minimo_cancelamento_horas,
-      originalSettings.antecedencia_maxima_dias,
-      originalSettings.intervalo_entre_atendimentos_minutos,
-    ],
-  );
-  await pool.execute(
-    `UPDATE horarios_funcionamento SET hora_inicio=?,hora_fim=?,intervalo_inicio=?,
-    intervalo_fim=?,ativo=? WHERE dia_semana=?`,
-    [
-      originalHours.hora_inicio,
-      originalHours.hora_fim,
-      originalHours.intervalo_inicio,
-      originalHours.intervalo_fim,
-      originalHours.ativo,
-      day,
-    ],
-  );
-  await new Promise((resolve) => server.close(resolve));
-  await pool.end();
+  let cleanupError;
+  const connection = await pool.getConnection();
+
+  try {
+    await connection.beginTransaction();
+    await connection.execute(
+      `DELETE h FROM historico_agendamentos h INNER JOIN agendamentos a
+      ON a.id=h.agendamento_id WHERE a.barbeiro_id IN (?,?)`,
+      [barberId, secondBarberId],
+    );
+    await connection.execute('DELETE FROM agendamentos WHERE barbeiro_id IN (?,?)', [
+      barberId,
+      secondBarberId,
+    ]);
+    await connection.execute('DELETE FROM horarios_trabalho WHERE barbeiro_id IN (?,?)', [
+      barberId,
+      secondBarberId,
+    ]);
+    await connection.execute('DELETE FROM barbeiro_servicos WHERE barbeiro_id IN (?,?)', [
+      barberId,
+      secondBarberId,
+    ]);
+    await connection.execute('DELETE FROM barbeiros WHERE id IN (?,?)', [barberId, secondBarberId]);
+    await connection.execute('DELETE FROM servicos WHERE id=?', [serviceId]);
+    await connection.execute('DELETE FROM usuario_papeis WHERE usuario_id IN (?,?,?,?,?)', [
+      adminId,
+      clientId,
+      otherClientId,
+      barberUserId,
+      secondBarberUserId,
+    ]);
+    await connection.execute('DELETE FROM usuarios WHERE id IN (?,?,?,?,?)', [
+      adminId,
+      clientId,
+      otherClientId,
+      barberUserId,
+      secondBarberUserId,
+    ]);
+    await connection.commit();
+  } catch (error) {
+    await connection.rollback();
+    cleanupError = error;
+  } finally {
+    connection.release();
+  }
+
+  try {
+    await pool.execute(
+      `UPDATE configuracoes SET nome_barbearia=?,telefone=?,endereco=?,fuso_horario=?,
+      tempo_minimo_cancelamento_horas=?,antecedencia_maxima_dias=?,intervalo_entre_atendimentos_minutos=? WHERE id=1`,
+      [
+        originalSettings.nome_barbearia,
+        originalSettings.telefone,
+        originalSettings.endereco,
+        originalSettings.fuso_horario,
+        originalSettings.tempo_minimo_cancelamento_horas,
+        originalSettings.antecedencia_maxima_dias,
+        originalSettings.intervalo_entre_atendimentos_minutos,
+      ],
+    );
+    await pool.execute(
+      `UPDATE horarios_funcionamento SET hora_inicio=?,hora_fim=?,intervalo_inicio=?,
+      intervalo_fim=?,ativo=? WHERE dia_semana=?`,
+      [
+        originalHours.hora_inicio,
+        originalHours.hora_fim,
+        originalHours.intervalo_inicio,
+        originalHours.intervalo_fim,
+        originalHours.ativo,
+        day,
+      ],
+    );
+  } catch (error) {
+    cleanupError ??= error;
+  } finally {
+    if (server?.listening) await new Promise((resolve) => server.close(resolve));
+    await pool.end();
+  }
+
+  if (cleanupError) throw cleanupError;
 });
 
 test('criação cliente é idempotente, preserva snapshots e histórico', async () => {
@@ -339,7 +368,7 @@ test('status, cancelamento e histórico respeitam o fluxo autorizado', async () 
   response = await api(`/admin/agendamentos/${adminAppointmentId}/cancelar`, {
     method: 'PUT',
     token: adminToken,
-    body: { motivo: 'Ajuste operacional' },
+    body: { motivo: 'Ajuste operacional', responsabilidade: 'barbearia' },
   });
   assert.equal(response.status, 200);
   const [[history]] = await pool.execute(

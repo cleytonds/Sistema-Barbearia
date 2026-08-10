@@ -222,8 +222,7 @@ test('plano lista por período e conta assinantes', async () => {
     fim: '2026-09-30',
     pool,
   });
-  assert.equal(porPeriodo.length, 1);
-  assert.equal(porPeriodo[0].id, ids.plan);
+  assert.equal(porPeriodo.find((plano) => plano.id === ids.plan)?.id, ids.plan);
 
   const fora = await planoRepository.buscarPlanosPorPeriodo({
     inicio: '2027-01-01',

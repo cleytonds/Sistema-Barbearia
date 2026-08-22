@@ -7,8 +7,13 @@ import { notFound } from './middlewares/notFound.js';
 import { requestContext } from './middlewares/requestContext.js';
 import { router } from './routes/index.js';
 
+export function configureTrustProxy(application, trustProxy = env.trustProxy) {
+  application.set('trust proxy', trustProxy);
+}
+
 export const app = express();
 
+configureTrustProxy(app);
 app.disable('x-powered-by');
 app.use(requestContext);
 app.use(helmet());

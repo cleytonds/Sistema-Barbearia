@@ -10,7 +10,12 @@ test('opções do cookie alinham segurança e expiração ao JWT', () => {
     path: '/',
     maxAge: 900_000,
   });
-  assert.equal(authCookieOptions({ production: true }).secure, true);
+  assert.deepEqual(authCookieOptions({ production: true }), {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'lax',
+    path: '/',
+  });
 });
 
 test('parser distingue cookie ausente de cookie presente e inválido', () => {

@@ -94,7 +94,7 @@ function assertSubscriptionPayload(payload) {
 }
 
 async function loadSubscribablePlan(planoId, connection) {
-  const plano = await planoRepository.buscarPlanoPorId(planoId, connection);
+  const plano = await planoRepository.buscarPlanoPorIdForUpdate(planoId, connection);
   if (!plano) throw new AppError('Plano não encontrado.', 404, 'PLAN_NOT_FOUND');
   if (!plano.ativo) throw new AppError('Plano não está ativo.', 422, 'PLAN_NOT_ACTIVE');
   if (!plano.adesoes_abertas)
@@ -276,7 +276,7 @@ export async function criarAssinaturaAdministrativa({
   nowUtc = new Date(),
 }) {
   const payload = normalizeSubscriptionPayload({ ...data, actorId });
-  assertSubscriptionPayload(payload);
+  assertSubscriptionIdentity(payload);
   const logContext = { requestId, usuarioId: actorId, operation: 'subscription_create_admin' };
   return runTransactionWithRetry({
     logContext,
@@ -289,6 +289,7 @@ export async function criarAssinaturaAdministrativa({
         evento: 'assinatura_solicitada',
         actorId: payload.actorId,
         nowUtc,
+        useOfficialPlanPeriod: true,
       });
       return assinaturaId;
     },
@@ -334,8 +335,10 @@ export async function expirarAssinaturaSeVencida({ id, requestId, nowUtc = new D
 }
 
 export async function obterAssinaturaAdmin({ id }) {
-  const assinatura = await assinaturaPlanoRepository.buscarAssinaturaPorId(id);
+  let assinatura = await assinaturaPlanoRepository.buscarAssinaturaPorId(id);
   if (!assinatura) throw new AppError('Assinatura não encontrada.', 404, 'SUBSCRIPTION_NOT_FOUND');
+  await expirarAssinaturaSeVencida({ id: assinatura.id });
+  assinatura = await assinaturaPlanoRepository.buscarAssinaturaPorId(id);
   const [servicos, barbeiros] = await Promise.all([
     assinaturaPlanoRepository.listarServicosSnapshot(id),
     assinaturaPlanoRepository.listarBarbeirosSnapshot(id),
@@ -357,7 +360,11 @@ export async function listarAssinaturasAdmin({ query }) {
 }
 
 export async function obterMeuPlano({ clientId }) {
-  const assinatura = await assinaturaPlanoRepository.buscarMeuPlano(clientId);
+  let assinatura = await assinaturaPlanoRepository.buscarMeuPlano(clientId);
+  if (!assinatura)
+    throw new AppError('Nenhuma assinatura encontrada.', 404, 'SUBSCRIPTION_NOT_FOUND');
+  await expirarAssinaturaSeVencida({ id: assinatura.id });
+  assinatura = await assinaturaPlanoRepository.buscarMeuPlano(clientId);
   if (!assinatura)
     throw new AppError('Nenhuma assinatura encontrada.', 404, 'SUBSCRIPTION_NOT_FOUND');
   const [servicos, barbeiros] = await Promise.all([
@@ -407,6 +414,16 @@ async function mutarStatusAssinatura({ id, status, motivo, actorId, evento, nota
       );
       if (!assinatura)
         throw new AppError('Assinatura não encontrada.', 404, 'SUBSCRIPTION_NOT_FOUND');
+      if (
+        status === SUBSCRIPTION_STATUS.ACTIVE &&
+        assinatura.status === SUBSCRIPTION_STATUS.SUSPENDED &&
+        civilDateAt(new Date(), assinatura.fuso_horario_snapshot) > toCivilDate(assinatura.fim_em)
+      )
+        throw new AppError(
+          'Assinatura vencida não pode ser reativada.',
+          409,
+          'SUBSCRIPTION_EXPIRED',
+        );
       assertSubscriptionTransition(assinatura.status, status);
       await assinaturaPlanoRepository.atualizarStatus(
         id,

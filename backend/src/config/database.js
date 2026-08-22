@@ -19,3 +19,15 @@ export async function checkDatabaseConnection() {
     connection.release();
   }
 }
+
+export async function checkDatabaseReadiness(databasePool = pool) {
+  const connection = await databasePool.getConnection();
+  try {
+    const [[configuration]] = await connection.execute(
+      'SELECT 1 FROM configuracoes WHERE id = 1 LIMIT 1',
+    );
+    if (!configuration) throw new Error('Essential configuration is unavailable.');
+  } finally {
+    connection.release();
+  }
+}

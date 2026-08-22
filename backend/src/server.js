@@ -1,6 +1,6 @@
 import { app } from './app.js';
 import { checkDatabaseConnection, pool } from './config/database.js';
-import { env } from './config/env.js';
+import { env, validateProductionEnvironment } from './config/env.js';
 import { cleanupExpiredRevocations } from './auth/jwtRevocation.js';
 import { fileURLToPath } from 'node:url';
 
@@ -12,7 +12,14 @@ export async function start({
   listen = (...args) => app.listen(...args),
   logger = console,
   nodeEnv = env.nodeEnv,
+  environment = process.env,
 } = {}) {
+  if (validateProductionEnvironment({ environment, nodeEnv }).length > 0) {
+    logger.error('[config] produÃ§Ã£o incompleta; a API nÃ£o serÃ¡ iniciada');
+    process.exitCode = 1;
+    return null;
+  }
+
   try {
     await checkDatabase();
     logger.log('[database] conexão estabelecida');

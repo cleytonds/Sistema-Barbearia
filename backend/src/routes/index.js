@@ -13,9 +13,9 @@ import { planoRoutes } from './planoRoutes.js';
 import { meuPlanoRoutes } from './meuPlanoRoutes.js';
 import { adminPlanoRoutes } from './adminPlanoRoutes.js';
 import { adminComissaoRoutes } from './adminComissaoRoutes.js';
-import { checkDatabaseConnection } from '../config/database.js';
+import { checkDatabaseReadiness } from '../config/database.js';
 
-export function createRouter({ checkDatabase = checkDatabaseConnection } = {}) {
+export function createRouter({ checkDatabase = checkDatabaseReadiness } = {}) {
   const router = Router();
 
   router.get('/health', (_req, res) => {

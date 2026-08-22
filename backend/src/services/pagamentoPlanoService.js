@@ -22,6 +22,14 @@ function validatePayment(data) {
     throw new AppError('Forma de pagamento inválida.', 422, 'INVALID_PAYMENT_METHOD');
 }
 
+function sameMoney(left, right) {
+  const normalize = (value) => {
+    const [integer, fraction = ''] = String(value).split('.');
+    return `${BigInt(integer)}.${fraction.padEnd(2, '0').slice(0, 2)}`;
+  };
+  return normalize(left) === normalize(right);
+}
+
 export async function criarOuObterPagamentoPendente({ data, actorId, requestId }) {
   validatePayment(data);
   return runTransactionWithRetry({
@@ -35,6 +43,12 @@ export async function criarOuObterPagamentoPendente({ data, actorId, requestId }
         throw new AppError('Assinatura não encontrada.', 404, 'SUBSCRIPTION_NOT_FOUND');
       if (['vencida', 'cancelada'].includes(subscription.status))
         throw new AppError('Assinatura não aceita pagamentos.', 409, 'INVALID_SUBSCRIPTION_STATE');
+      if (!sameMoney(data.valor, subscription.valor_contratado))
+        throw new AppError(
+          'Valor do pagamento diverge do contratado.',
+          422,
+          'PAYMENT_VALUE_MISMATCH',
+        );
       const existing = await pagamentoRepository.buscarPorAssinaturaEReferenciaForUpdate(
         data.assinaturaId,
         data.referenciaMes,
@@ -99,6 +113,12 @@ export async function confirmarPagamento({ id, actorId, requestId, now = new Dat
         );
       if (TERMINAL_SUBSCRIPTION_STATUSES.includes(subscription.status))
         throw new AppError('Assinatura não aceita pagamentos.', 409, 'INVALID_SUBSCRIPTION_STATE');
+      if (!sameMoney(payment.valor_confirmado, subscription.valor_contratado))
+        throw new AppError(
+          'Valor do pagamento diverge do contratado.',
+          422,
+          'PAYMENT_VALUE_MISMATCH',
+        );
       await pagamentoRepository.confirmarPagamento(id, { actorId, now }, connection);
       await historicoRepository.registrarEvento(
         {

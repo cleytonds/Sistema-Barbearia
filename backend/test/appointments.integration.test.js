@@ -14,9 +14,12 @@ const { issueAccessToken } = await import('../src/auth/jwtIssuer.js');
 const { hashPassword } = await import('../src/auth/password.js');
 const { pool } = await import('../src/config/database.js');
 const appointmentService = await import('../src/services/agendamentoService.js');
+const statusService = await import('../src/services/agendamentoStatusService.js');
 const { grantRole } = await import('../src/repositories/roleRepository.js');
 
 const marker = `F6-${randomUUID().slice(0, 8)}`;
+const phonePrefix = String(BigInt(`0x${marker.slice(3)}`) % 10_000_000n).padStart(7, '0');
+let userSequence = 0;
 const zone = 'America/Recife';
 const date = DateTime.now().setZone(zone).plus({ days: 7 }).toFormat('yyyy-MM-dd');
 const day = DateTime.fromISO(date, { zone }).weekday % 7;
@@ -43,7 +46,12 @@ async function api(path, { method = 'GET', token, body, key } = {}) {
   return fetch(`${base}${path}`, {
     method,
     headers: {
-      ...(token && { authorization: `Bearer ${token}` }),
+      ...(token && { cookie: `barbearia_session=${token}` }),
+      ...(token &&
+        ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) && {
+          origin: 'http://localhost:5173',
+          'x-csrf-protection': '1',
+        }),
       ...(body && { 'content-type': 'application/json' }),
       ...(key && { 'Idempotency-Key': key }),
     },
@@ -58,7 +66,7 @@ async function addUser(profile, suffix) {
     [
       `${marker} ${suffix}`,
       `${marker}-${suffix}@example.test`,
-      `81${String(Date.now() + Math.floor(Math.random() * 9999)).slice(-9)}`,
+      `81${phonePrefix}${String(++userSequence).padStart(2, '0')}`,
       password,
       profile,
     ],
@@ -135,6 +143,16 @@ test.after(async () => {
 
   try {
     await connection.beginTransaction();
+    await connection.execute(
+      `DELETE aa FROM agendamentos_arquivados_barbeiro aa INNER JOIN agendamentos a
+      ON a.id=aa.agendamento_id WHERE a.barbeiro_id IN (?,?)`,
+      [barberId, secondBarberId],
+    );
+    await connection.execute(
+      `DELETE c FROM comissoes c INNER JOIN agendamentos a
+      ON a.id=c.agendamento_id WHERE a.barbeiro_id IN (?,?)`,
+      [barberId, secondBarberId],
+    );
     await connection.execute(
       `DELETE h FROM historico_agendamentos h INNER JOIN agendamentos a
       ON a.id=h.agendamento_id WHERE a.barbeiro_id IN (?,?)`,
@@ -318,6 +336,160 @@ test('admin cria confirmado e barbeiro acessa somente o próprio agendamento', a
   assert.equal((await api(`/agendamentos/${created.id}`, { token: otherClientToken })).status, 403);
 });
 
+test('barbeiro arquiva somente atendimentos encerrados sem alterar dados relacionados', async () => {
+  const statuses = [
+    'pendente',
+    'confirmado',
+    'em_atendimento',
+    'concluido',
+    'cancelado',
+    'ausente',
+  ];
+  const ids = {};
+  for (const [index, status] of statuses.entries()) {
+    const start = DateTime.fromISO(`${date}T${String(index + 1).padStart(2, '0')}:00:00`, {
+      zone,
+    })
+      .toUTC()
+      .toJSDate();
+    const end = new Date(start.getTime() + 30 * 60_000);
+    const [result] = await pool.execute(
+      `INSERT INTO agendamentos
+       (cliente_id,barbeiro_id,servico_id,criado_por,origem,inicio_em,fim_em,
+        fim_ocupacao_em,preco,duracao_minutos,buffer_minutos,status,concluido_em,
+        cancelado_em,cancelado_por)
+       VALUES(?,?,?,?,?,?,?,?,40.00,30,0,?,?,?,?)`,
+      [
+        clientId,
+        barberId,
+        serviceId,
+        adminId,
+        'admin',
+        start,
+        end,
+        end,
+        status,
+        status === 'concluido' ? end : null,
+        status === 'cancelado' ? end : null,
+        status === 'cancelado' ? adminId : null,
+      ],
+    );
+    ids[status] = String(result.insertId);
+  }
+
+  const thirdStart = DateTime.fromISO(`${date}T07:00:00`, { zone }).toUTC().toJSDate();
+  const thirdEnd = new Date(thirdStart.getTime() + 30 * 60_000);
+  const [third] = await pool.execute(
+    `INSERT INTO agendamentos
+     (cliente_id,barbeiro_id,servico_id,criado_por,origem,inicio_em,fim_em,
+      fim_ocupacao_em,preco,duracao_minutos,buffer_minutos,status,concluido_em)
+     VALUES(?,?,?,?,?,?,?,?,40.00,30,0,'concluido',?)`,
+    [
+      clientId,
+      secondBarberId,
+      serviceId,
+      adminId,
+      'admin',
+      thirdStart,
+      thirdEnd,
+      thirdEnd,
+      thirdEnd,
+    ],
+  );
+  await pool.execute(
+    `INSERT INTO historico_agendamentos
+      (agendamento_id,tipo_evento,status_anterior,status_novo,alterado_por)
+     VALUES(?,'concluido','em_atendimento','concluido',?)`,
+    [ids.concluido, barberUserId],
+  );
+  await pool.execute(
+    `INSERT INTO comissoes
+      (agendamento_id,barbeiro_id,tipo_cobranca,valor_base_snapshot,
+       percentual_snapshot,valor_comissao)
+     VALUES(?,?,'avulso',40.00,50.00,20.00)`,
+    [ids.concluido, barberId],
+  );
+
+  for (const status of ['pendente', 'confirmado', 'em_atendimento']) {
+    const response = await api(`/barbeiro/agendamentos/${ids[status]}/arquivar`, {
+      method: 'PUT',
+      token: barberToken,
+    });
+    assert.equal(response.status, 422, status);
+    assert.equal((await response.json()).error.code, 'APPOINTMENT_NOT_ARCHIVABLE');
+  }
+  for (const status of ['concluido', 'cancelado', 'ausente']) {
+    assert.equal(
+      (
+        await api(`/barbeiro/agendamentos/${ids[status]}/arquivar`, {
+          method: 'PUT',
+          token: barberToken,
+        })
+      ).status,
+      204,
+      status,
+    );
+  }
+  assert.equal(
+    (
+      await api(`/barbeiro/agendamentos/${third.insertId}/arquivar`, {
+        method: 'PUT',
+        token: barberToken,
+      })
+    ).status,
+    404,
+  );
+
+  const main = await (
+    await api(`/barbeiro/agendamentos?data=${date}`, { token: barberToken })
+  ).json();
+  assert.equal(
+    main.data.some((item) => item.id === ids.concluido),
+    false,
+  );
+  const archivedResponse = await api(`/barbeiro/agendamentos?data=${date}&arquivados=true`, {
+    token: barberToken,
+  });
+  const archived = await archivedResponse.json();
+  assert.deepEqual(archived.data.map((item) => item.status).sort(), [
+    'ausente',
+    'cancelado',
+    'concluido',
+  ]);
+  const refreshed = await (
+    await api(`/barbeiro/agendamentos?data=${date}&arquivados=true`, { token: barberToken })
+  ).json();
+  assert.deepEqual(
+    refreshed.data.map((item) => item.id).sort(),
+    archived.data.map((item) => item.id).sort(),
+  );
+  const detail = await (
+    await api(`/barbeiro/agendamentos/${ids.concluido}`, { token: barberToken })
+  ).json();
+  assert.equal(detail.data.arquivado, true);
+
+  const [[preserved]] = await pool.execute(
+    `SELECT a.status,
+      (SELECT COUNT(*) FROM historico_agendamentos h WHERE h.agendamento_id=a.id) historico,
+      (SELECT COUNT(*) FROM comissoes c WHERE c.agendamento_id=a.id) comissao
+     FROM agendamentos a WHERE a.id=?`,
+    [ids.concluido],
+  );
+  assert.deepEqual(
+    {
+      status: preserved.status,
+      historico: Number(preserved.historico),
+      comissao: Number(preserved.comissao),
+    },
+    { status: 'concluido', historico: 1, comissao: 1 },
+  );
+  const admin = await (await api(`/admin/agendamentos?data=${date}`, { token: adminToken })).json();
+  assert.equal(
+    admin.data.some((item) => item.id === ids.concluido),
+    true,
+  );
+});
+
 test('mesma chave com payloads e barbeiros diferentes mantém somente o vencedor', async () => {
   const key = randomUUID();
   const common = { servicoId: serviceId, data: date, horaInicio: '16:00' };
@@ -377,6 +549,100 @@ test('status, cancelamento e histórico respeitam o fluxo autorizado', async () 
     [clientAppointmentId],
   );
   assert.equal(Number(history.total), 3);
+});
+
+test('cancelamento e reagendamento de cliente ocultam agendamentos de terceiros', async () => {
+  const ownCreation = await api('/agendamentos', {
+    method: 'POST',
+    token: clientToken,
+    key: randomUUID(),
+    body: {
+      barbeiroId: secondBarberId,
+      servicoId: serviceId,
+      data: date,
+      horaInicio: '09:00',
+    },
+  });
+  assert.equal(ownCreation.status, 201);
+  const ownAppointmentId = (await ownCreation.json()).data.id;
+  let response = await api(`/agendamentos/${ownAppointmentId}/cancelar`, {
+    method: 'PUT',
+    token: clientToken,
+    body: {},
+  });
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).data.status, 'cancelado');
+
+  const creation = await api('/agendamentos', {
+    method: 'POST',
+    token: otherClientToken,
+    key: randomUUID(),
+    body: {
+      barbeiroId: secondBarberId,
+      servicoId: serviceId,
+      data: date,
+      horaInicio: '08:00',
+    },
+  });
+  assert.equal(creation.status, 201);
+  const thirdPartyAppointmentId = (await creation.json()).data.id;
+  const [[before]] = await pool.execute(
+    `SELECT status, inicio_em,
+      (SELECT COUNT(*) FROM historico_agendamentos WHERE agendamento_id=?) history_count
+     FROM agendamentos WHERE id=?`,
+    [thirdPartyAppointmentId, thirdPartyAppointmentId],
+  );
+
+  response = await api(`/agendamentos/${thirdPartyAppointmentId}/cancelar`, {
+    method: 'PUT',
+    token: clientToken,
+    body: { motivo: 'Tentativa indevida' },
+  });
+  assert.equal(response.status, 404);
+  assert.equal((await response.json()).error.code, 'APPOINTMENT_NOT_FOUND');
+
+  response = await api(`/agendamentos/${thirdPartyAppointmentId}/reagendar`, {
+    method: 'PUT',
+    token: clientToken,
+    body: { data: date, horaInicio: '09:00' },
+  });
+  assert.equal(response.status, 404);
+  assert.equal((await response.json()).error.code, 'APPOINTMENT_NOT_FOUND');
+
+  const nonexistentId = '18446744073709551615';
+  response = await api(`/agendamentos/${nonexistentId}/cancelar`, {
+    method: 'PUT',
+    token: clientToken,
+    body: { motivo: 'Agendamento inexistente' },
+  });
+  assert.equal(response.status, 404);
+  assert.equal((await response.json()).error.code, 'APPOINTMENT_NOT_FOUND');
+
+  response = await api(`/agendamentos/${nonexistentId}/reagendar`, {
+    method: 'PUT',
+    token: clientToken,
+    body: { data: date, horaInicio: '09:00' },
+  });
+  assert.equal(response.status, 404);
+  assert.equal((await response.json()).error.code, 'APPOINTMENT_NOT_FOUND');
+
+  const [[after]] = await pool.execute(
+    `SELECT status, inicio_em,
+      (SELECT COUNT(*) FROM historico_agendamentos WHERE agendamento_id=?) history_count
+     FROM agendamentos WHERE id=?`,
+    [thirdPartyAppointmentId, thirdPartyAppointmentId],
+  );
+  assert.equal(after.status, before.status);
+  assert.equal(new Date(after.inicio_em).getTime(), new Date(before.inicio_em).getTime());
+  assert.equal(Number(after.history_count), Number(before.history_count));
+
+  response = await api(`/agendamentos/${thirdPartyAppointmentId}/cancelar`, {
+    method: 'PUT',
+    token: otherClientToken,
+    body: { motivo: 'Cancelamento pelo proprietário' },
+  });
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).data.status, 'cancelado');
 });
 
 test('reagendamento usa snapshots antigos após serviço e configuração mudarem', async () => {
@@ -514,4 +780,110 @@ test('conflito de reagendamento mantém o horário anterior e status futuro é r
     body: { status: 'em_atendimento' },
   });
   assert.equal(response.status, 422);
+});
+
+test('barbeiro inicia antecipadamente somente o próximo atendimento elegível', async () => {
+  async function createAt(horaInicio) {
+    const response = await api('/agendamentos', {
+      method: 'POST',
+      token: otherClientToken,
+      key: randomUUID(),
+      body: { barbeiroId: secondBarberId, servicoId: serviceId, data: date, horaInicio },
+    });
+    assert.equal(response.status, 201);
+    const appointment = (await response.json()).data;
+    await pool.execute("UPDATE agendamentos SET status='confirmado' WHERE id=?", [appointment.id]);
+    return appointment;
+  }
+
+  const previous = await createAt('10:00');
+  const next = await createAt('11:00');
+  const [[beforeStart]] = await pool.execute('SELECT inicio_em FROM agendamentos WHERE id=?', [
+    next.id,
+  ]);
+  const earlyNow = DateTime.fromISO(`${date}T10:05:00`, { zone }).toUTC().toJSDate();
+
+  await assert.rejects(
+    () =>
+      statusService.updateStatus({
+        id: next.id,
+        userId: secondBarberUserId,
+        role: 'barbeiro',
+        nextStatus: 'em_atendimento',
+        nowUtc: earlyNow,
+      }),
+    { code: 'EARLY_START_BLOCKED' },
+  );
+
+  await pool.execute("UPDATE agendamentos SET status='ausente' WHERE id=?", [previous.id]);
+  await statusService.updateStatus({
+    id: next.id,
+    userId: secondBarberUserId,
+    role: 'barbeiro',
+    nextStatus: 'em_atendimento',
+    nowUtc: earlyNow,
+  });
+  const [[started]] = await pool.execute('SELECT status,inicio_em FROM agendamentos WHERE id=?', [
+    next.id,
+  ]);
+  assert.equal(started.status, 'em_atendimento');
+  assert.equal(new Date(started.inicio_em).getTime(), new Date(beforeStart.inicio_em).getTime());
+
+  for (const terminalStatus of ['concluido', 'cancelado']) {
+    await pool.execute(
+      `UPDATE agendamentos SET status=?,
+       concluido_em=IF(?='concluido',?,NULL),
+       cancelado_em=IF(?='cancelado',?,NULL),
+       cancelado_por=IF(?='cancelado',?,NULL)
+       WHERE id=?`,
+      [
+        terminalStatus,
+        terminalStatus,
+        earlyNow,
+        terminalStatus,
+        earlyNow,
+        terminalStatus,
+        otherClientId,
+        previous.id,
+      ],
+    );
+    await pool.execute("UPDATE agendamentos SET status='confirmado' WHERE id=?", [next.id]);
+    await statusService.updateStatus({
+      id: next.id,
+      userId: secondBarberUserId,
+      role: 'barbeiro',
+      nextStatus: 'em_atendimento',
+      nowUtc: earlyNow,
+    });
+  }
+
+  const later = await createAt('12:00');
+  await assert.rejects(
+    () =>
+      statusService.updateStatus({
+        id: later.id,
+        userId: secondBarberUserId,
+        role: 'barbeiro',
+        nextStatus: 'em_atendimento',
+        nowUtc: earlyNow,
+      }),
+    { code: 'EARLY_START_BLOCKED' },
+  );
+  await assert.rejects(
+    () =>
+      statusService.updateStatus({
+        id: later.id,
+        userId: barberUserId,
+        role: 'barbeiro',
+        nextStatus: 'em_atendimento',
+        nowUtc: earlyNow,
+      }),
+    { code: 'APPOINTMENT_FORBIDDEN' },
+  );
+
+  const [[commissionBefore]] = await pool.execute(
+    'SELECT COUNT(*) total FROM comissoes WHERE agendamento_id=?',
+    [next.id],
+  );
+  assert.equal(Number(commissionBefore.total), 0);
 });

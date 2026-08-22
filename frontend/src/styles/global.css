@@ -321,6 +321,9 @@ h3 {
 .header-actions > :not(.header-cta) {
   display: none;
 }
+.header-actions > .header-account-link {
+  display: inline-flex;
+}
 .header-cta {
   min-height: var(--touch-target);
   padding-inline: var(--space-3);
@@ -457,6 +460,17 @@ h3 {
 }
 .schedule-page .card {
   padding: clamp(1.25rem, 2.5vw, 2rem);
+}
+.schedule-success__share p {
+  margin: 0;
+}
+@media (max-width: 767px) {
+  .schedule-success {
+    padding-top: var(--space-6);
+  }
+  .schedule-success__share .button {
+    width: 100%;
+  }
 }
 .empty-state {
   display: grid;
@@ -669,6 +683,9 @@ h3 {
     padding-inline: 0.6rem;
     font-size: 0.875rem;
   }
+  .header-account-link {
+    font-size: 0.875rem;
+  }
   .brand-mark--header {
     width: 3rem;
     height: 3rem;
@@ -814,6 +831,27 @@ h3 {
   gap: 1rem;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
 }
+.commissions-section {
+  margin-block: 1.5rem;
+}
+.commission-config-grid,
+.commission-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+  gap: 1rem;
+  align-items: end;
+}
+.plan-service-commission {
+  padding-block: 0.75rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+.plan-service-commission__fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.75rem;
+  align-items: end;
+  margin-top: 0.75rem;
+}
 @media (max-width: 800px) {
   .operational-shell {
     display: block;
@@ -852,6 +890,9 @@ h3 {
   }
   .data-table td {
     border: 0;
+  }
+  .plan-service-commission__fields {
+    grid-template-columns: 1fr;
   }
 }
 @media (min-width: 1024px) {

@@ -4,6 +4,7 @@ import { PageHeader } from '../../components/operational/index.jsx';
 import {
   Alert,
   Badge,
+  Button,
   EmptyState,
   Input,
   Pagination,
@@ -17,14 +18,37 @@ export default function BarberAgendaPage() {
   useDocumentTitle('Minha agenda');
   const [data, setData] = React.useState(today),
     [status, setStatus] = React.useState(''),
+    [archived, setArchived] = React.useState(false),
+    [archiveError, setArchiveError] = React.useState(''),
+    [archivingId, setArchivingId] = React.useState(null),
     [page, setPage] = React.useState(1);
   const state = useRemoteData(
     () =>
-      operacionalService.barberAppointments({ data, status: status || undefined, page, limit: 20 }),
-    [data, status, page],
+      operacionalService.barberAppointments({
+        data,
+        status: status || undefined,
+        arquivados: archived,
+        page,
+        limit: 20,
+      }),
+    [data, status, archived, page],
   );
   const rows = state.data?.data ?? [],
     pagination = state.data?.pagination;
+  async function archive(id) {
+    setArchivingId(id);
+    setArchiveError('');
+    try {
+      await operacionalService.archiveAppointment(id);
+      await state.reload();
+    } catch (error) {
+      setArchiveError(
+        error.response?.data?.error?.message ?? 'Não foi possível arquivar o agendamento.',
+      );
+    } finally {
+      setArchivingId(null);
+    }
+  }
   return (
     <>
       <PageHeader title="Minha agenda" description="Atendimentos organizados por horário." />
@@ -56,7 +80,19 @@ export default function BarberAgendaPage() {
             )}
           </select>
         </label>
+        <label className="cluster">
+          <input
+            type="checkbox"
+            checked={archived}
+            onChange={(event) => {
+              setArchived(event.target.checked);
+              setPage(1);
+            }}
+          />
+          Ver arquivados
+        </label>
       </section>
+      {archiveError && <Alert type="error">{archiveError}</Alert>}
       {state.loading ? (
         <Skeleton />
       ) : state.error ? (
@@ -77,7 +113,18 @@ export default function BarberAgendaPage() {
               </div>
               <h2>{item.cliente.nome}</h2>
               <p>{item.servico.nome}</p>
-              <Link to={`/barbeiro/agendamentos/${item.id}`}>Ver detalhes</Link>
+              <div className="cluster">
+                <Link to={`/barbeiro/agendamentos/${item.id}`}>Ver detalhes</Link>
+                {!archived && ['concluido', 'cancelado', 'ausente'].includes(item.status) && (
+                  <Button
+                    variant="secondary"
+                    loading={archivingId === item.id}
+                    onClick={() => archive(item.id)}
+                  >
+                    Arquivar
+                  </Button>
+                )}
+              </div>
             </article>
           ))}
         </div>

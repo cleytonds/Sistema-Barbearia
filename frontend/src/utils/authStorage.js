@@ -5,14 +5,10 @@ function storage() {
 }
 
 export const authStorage = {
-  getToken() {
-    return storage()?.getItem(TOKEN_KEY) ?? null;
-  },
-  setToken(token) {
-    if (!token) return this.clear();
-    storage()?.setItem(TOKEN_KEY, token);
-  },
-  clear() {
+  clearLegacyToken() {
     storage()?.removeItem(TOKEN_KEY);
   },
 };
+
+// Limpeza de migração: nenhum token novo é persistido pelo frontend.
+authStorage.clearLegacyToken();

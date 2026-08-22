@@ -13,3 +13,7 @@ Thumbs.db
 .vscode/
 .idea/
 .history/
+
+integration-run-output.txt
+backend/integration-full.txt
+backend/integration-result*.txt

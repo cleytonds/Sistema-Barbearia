@@ -71,7 +71,11 @@ export async function listBarber(userId, query, pagination) {
   if (!barber?.ativo) throw new AppError('Barbeiro não encontrado.', 404, 'BARBER_NOT_FOUND');
   const settings = await appointmentRepository.findSettings();
   return list(
-    { ...filtersForQuery(query, settings.fuso_horario), barberId: barber.id },
+    {
+      ...filtersForQuery(query, settings.fuso_horario),
+      barberId: barber.id,
+      archived: query.arquivados === true || query.arquivados === 'true',
+    },
     pagination,
     'barbeiro',
     settings,
@@ -92,7 +96,13 @@ export async function detail({ id, userId, role }) {
     assertAssignedBarber(appointment, barber);
   }
   const serialized = serializeAppointment(appointment, appointment.fuso_horario);
-  if (role === 'barbeiro') return { ...serialized, cliente: { nome: appointment.cliente_nome } };
+  if (role === 'barbeiro') {
+    return {
+      ...serialized,
+      cliente: { nome: appointment.cliente_nome },
+      arquivado: Boolean(appointment.arquivado_barbeiro),
+    };
+  }
   if (role === 'admin') {
     return {
       ...serialized,

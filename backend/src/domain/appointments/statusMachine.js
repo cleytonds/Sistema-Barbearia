@@ -8,7 +8,13 @@ const transitions = Object.freeze({
 });
 
 /** Valida uma transição operacional, sem permitir cancelamento pela rota genérica. */
-export function assertStatusTransition({ currentStatus, nextStatus, startAt, nowUtc }) {
+export function assertStatusTransition({
+  currentStatus,
+  nextStatus,
+  startAt,
+  nowUtc,
+  allowEarlyStart = false,
+}) {
   if (nextStatus === APPOINTMENT_STATUS.CANCELLED) {
     throw new AppError('Use a rota de cancelamento.', 422, 'INVALID_STATUS_TRANSITION');
   }
@@ -21,6 +27,7 @@ export function assertStatusTransition({ currentStatus, nextStatus, startAt, now
   const startsInFuture = new Date(startAt).getTime() > new Date(nowUtc).getTime();
   if (
     startsInFuture &&
+    !(nextStatus === APPOINTMENT_STATUS.IN_SERVICE && allowEarlyStart) &&
     [
       APPOINTMENT_STATUS.ABSENT,
       APPOINTMENT_STATUS.IN_SERVICE,

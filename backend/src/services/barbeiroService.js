@@ -2,6 +2,7 @@ import { hashPassword } from '../auth/password.js';
 import { pool } from '../config/database.js';
 import * as barbeiroRepository from '../repositories/barbeiroRepository.js';
 import * as servicoRepository from '../repositories/servicoRepository.js';
+import * as comissaoRepository from '../repositories/comissaoRepository.js';
 import { AppError } from '../utils/AppError.js';
 import { normalizeEmail, normalizeName, normalizePhone } from '../utils/normalize.js';
 import { paginationResult, parsePagination } from '../utils/pagination.js';
@@ -46,7 +47,13 @@ export async function get(barbeiroId, publicOnly = false) {
   if (!barber || (publicOnly && (!barber.ativo || !barber.usuario_ativo))) {
     throw new AppError('Barbeiro não encontrado.', 404, 'BARBER_NOT_FOUND');
   }
-  return publicOnly ? toPublicBarber(barber) : barber;
+  if (publicOnly) return toPublicBarber(barber);
+  const configuration = await comissaoRepository.buscarConfiguracao(barbeiroId);
+  return {
+    ...barber,
+    percentualComissaoAvulsa: configuration?.percentual_avulso ?? null,
+    percentualComissaoPlano: configuration?.percentual_plano ?? null,
+  };
 }
 
 export async function services(barbeiroId, publicOnly = false) {

@@ -21,7 +21,7 @@ test('permissões do cliente cobrem prazo e estados terminais', () => {
       settings,
       now,
     ),
-    { podeCancelar: false, podeReagendar: false },
+    { podeCancelar: true, podeReagendar: false },
   );
   for (const status of ['cancelado', 'concluido', 'ausente', 'em_atendimento']) {
     assert.deepEqual(
@@ -33,6 +33,17 @@ test('permissões do cliente cobrem prazo e estados terminais', () => {
       { podeCancelar: false, podeReagendar: false },
     );
   }
+  const planPermissions = clientAppointmentPermissions(
+    {
+      status: 'confirmado',
+      tipo_cobranca: 'plano',
+      inicio_em: new Date('2030-01-01T13:00:00.000Z'),
+    },
+    { tempo_minimo_cancelamento_horas: 3 },
+    now,
+  );
+  assert.equal(planPermissions.cancelamentoPlano.antecedenciaHoras, 2);
+  assert.equal(planPermissions.cancelamentoPlano.prazoEm, '2030-01-01T11:00:00.000Z');
 });
 
 import {
@@ -42,7 +53,10 @@ import {
 } from '../src/domain/appointments/idempotency.js';
 import { assertStatusTransition } from '../src/domain/appointments/statusMachine.js';
 import { buildBookingSnapshot } from '../src/domain/appointments/snapshots.js';
-import { assertClientCancellation } from '../src/domain/appointments/cancellationRules.js';
+import {
+  assertClientCancellation,
+  isLateCancellation,
+} from '../src/domain/appointments/cancellationRules.js';
 import { assertReschedule } from '../src/domain/appointments/rescheduleRules.js';
 
 test('idempotência é determinística e sensível ao payload', () => {
@@ -98,6 +112,16 @@ test('máquina de estados aplica estados terminais e regras temporais', () => {
     }),
     true,
   );
+  assert.equal(
+    assertStatusTransition({
+      currentStatus: 'confirmado',
+      nextStatus: 'em_atendimento',
+      startAt,
+      nowUtc: before,
+      allowEarlyStart: true,
+    }),
+    true,
+  );
   assert.throws(
     () =>
       assertStatusTransition({
@@ -138,6 +162,13 @@ test('cancelamento aceita o limite exato e rejeita depois dele', () => {
       }),
     { code: 'CANCELLATION_DEADLINE_PASSED' },
   );
+});
+
+test('política de duas horas compara instantes sem depender do timezone textual', () => {
+  const rule = { startAt: '2030-01-01T15:00:00.000Z', minimumHours: 2 };
+  assert.equal(isLateCancellation({ ...rule, nowUtc: '2030-01-01T13:00:00.000Z' }), false);
+  assert.equal(isLateCancellation({ ...rule, nowUtc: '2030-01-01T12:59:59.999Z' }), false);
+  assert.equal(isLateCancellation({ ...rule, nowUtc: '2030-01-01T10:00:00.001-03:00' }), true);
 });
 
 test('reagendamento rejeita mesmo horário, prazo encerrado e estado inválido', () => {

@@ -458,6 +458,35 @@ test('assinatura service: adesão cria status aguardando_pagamento e snapshots',
   assert.equal(assinatura.barbeiros.length, 2);
 });
 
+test('assinatura service: plano 10/08–11/08 aceita solicitação no primeiro dia civil', async () => {
+  const planId = await planoService.criarPlano({
+    data: planData({
+      nome: `${marker} Plano Janela Curta`,
+      adesaoInicio: '2026-08-10',
+      adesaoFim: '2026-08-11',
+      utilizacaoInicio: '2026-08-10',
+      utilizacaoFim: '2026-11-10',
+    }),
+    actorId: ids.admin,
+    requestId: `${marker}-short-window-plan`,
+  });
+
+  const result = await assinaturaService.solicitarAdesao({
+    data: subscriptionData({
+      planoId: planId,
+      clientId: ids.client2,
+      inicioEm: '2026-08-10',
+      fimEm: '2026-11-10',
+    }),
+    actorId: ids.client2,
+    idempotencyKey: idemKey(),
+    requestId: `${marker}-short-window-sign`,
+    nowUtc: new Date('2026-08-10T15:00:00.000Z'),
+  });
+
+  assert.ok(result.assinaturaId > 0);
+});
+
 test('assinatura service: idempotência replay retorna assinatura original', async () => {
   const key = idemKey();
   const primeira = await assinaturaService.solicitarAdesao({

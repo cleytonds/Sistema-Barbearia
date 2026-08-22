@@ -3,10 +3,12 @@ import { Alert, Button, Dialog, Input, Textarea } from '../ui/index.jsx';
 import { useCancelarAgendamento } from '../../hooks/useCancelarAgendamento.js';
 import { useDisponibilidade } from '../../hooks/useDisponibilidade.js';
 import { useReagendarAgendamento } from '../../hooks/useReagendarAgendamento.js';
+import { planCancellationMessage } from '../../utils/appointmentPlanPolicy.js';
 
 export function CancelAppointmentDialog({ appointment, open, onClose, onSuccess }) {
   const [reason, setReason] = useState('');
   const { cancelar, loading, error } = useCancelarAgendamento();
+  const planMessage = planCancellationMessage(appointment);
   async function confirm() {
     try {
       const result = await cancelar(appointment.id, reason || undefined);
@@ -20,6 +22,7 @@ export function CancelAppointmentDialog({ appointment, open, onClose, onSuccess 
     <Dialog open={open} onClose={onClose} title="Cancelar agendamento">
       <div className="stack">
         <p>Essa ação altera o status do agendamento e não remove seu histórico.</p>
+        {planMessage && <Alert type="info">{planMessage}</Alert>}
         <Textarea
           label="Motivo (opcional)"
           maxLength="500"

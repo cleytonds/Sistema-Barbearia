@@ -16,14 +16,16 @@ import { useDocumentTitle } from '../../hooks/useDocumentTitle.js';
 import { useRemoteData } from '../../hooks/useRemoteData.js';
 import { adminService } from '../../services/adminService.js';
 import { adminPlanoService } from '../../services/planoService.js';
+import { comissaoService } from '../../services/comissaoService.js';
 import { servicoService } from '../../services/servicoService.js';
 import { barbeiroService } from '../../services/barbeiroService.js';
 import { operacionalService } from '../../services/operacionalService.js';
 import { getDisponibilidade } from '../../services/disponibilidadeService.js';
+import { createInitialBlockPeriod } from '../../utils/blockDateTime.js';
 import { subscriptionStatus, usoStatus } from '../../utils/planStatus.js';
 const today = () => new Date().toISOString().slice(0, 10);
 const msg = (error) =>
-  error.response?.data?.error?.message ?? 'Não foi possível concluir a operação.';
+  error.response?.data?.error?.message ?? error.message ?? 'Não foi possível concluir a operação.';
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 const parsePrice = (value) =>
   String(value ?? '')
@@ -862,6 +864,9 @@ export function AdminPlansPage() {
     [actionLoading, setActionLoading] = useState(false),
     [motivo, setMotivo] = useState(''),
     [error, setError] = useState(''),
+    [commissionBases, setCommissionBases] = useState({}),
+    [commissionSaving, setCommissionSaving] = useState(''),
+    [commissionFeedback, setCommissionFeedback] = useState(''),
     [, setFieldErrors] = useState({}),
     [form, setForm] = useState({
       nome: '',
@@ -888,32 +893,52 @@ export function AdminPlansPage() {
     barbers = useRemoteData(() => barbeiroService.listPublic({ limit: 100 }), []);
   const activeServices = (services.data?.data ?? []).filter(isActive);
   const activeBarbers = (barbers.data?.data ?? []).filter(isActive);
-  function edit(item) {
-    setEditing(item);
+  function populateEditForm(detail) {
+    setEditing(detail);
+    setCommissionBases(
+      Object.fromEntries(
+        (detail.servicos ?? []).map((service) => [
+          String(service.id),
+          service.valorBaseComissao ?? service.valor_base_comissao ?? '',
+        ]),
+      ),
+    );
+    setForm({
+      nome: detail.nome ?? '',
+      descricao: detail.descricao ?? '',
+      preco: detail.preco ?? '',
+      adesaoInicio: detail.adesaoInicio ?? '',
+      adesaoFim: detail.adesaoFim ?? '',
+      utilizacaoInicio: detail.utilizacaoInicio ?? '',
+      utilizacaoFim: detail.utilizacaoFim ?? '',
+      possuiLimiteSemanal: Boolean(detail.possuiLimiteSemanal),
+      limiteSemanal: detail.limiteSemanal ?? '',
+      possuiLimiteTotal: Boolean(detail.possuiLimiteTotal),
+      limiteTotal: detail.limiteTotal ?? '',
+      ativo: Boolean(detail.ativo),
+      adesoesAbertas: Boolean(detail.adesoesAbertas),
+      servicos: (detail.servicos ?? []).map((s) => String(s.id)),
+      barbeiros: (detail.barbeiros ?? []).map((b) => String(b.id)),
+    });
+  }
+  async function edit(item) {
     setError('');
     setFieldErrors({});
-    setForm({
-      nome: item.nome,
-      descricao: item.descricao ?? '',
-      preco: item.preco,
-      adesaoInicio: item.adesaoInicio ?? '',
-      adesaoFim: item.adesaoFim ?? '',
-      utilizacaoInicio: item.utilizacaoInicio ?? '',
-      utilizacaoFim: item.utilizacaoFim ?? '',
-      possuiLimiteSemanal: item.possuiLimiteSemanal,
-      limiteSemanal: item.limiteSemanal ?? '',
-      possuiLimiteTotal: item.possuiLimiteTotal,
-      limiteTotal: item.limiteTotal ?? '',
-      ativo: Boolean(item.ativo),
-      adesoesAbertas: item.adesoesAbertas,
-      servicos: (item.servicos ?? []).map((s) => String(s.id)),
-      barbeiros: (item.barbeiros ?? []).map((b) => String(b.id)),
-    });
+    setCommissionFeedback('');
+    populateEditForm(item);
+    try {
+      const detail = (await adminPlanoService.getPlan(item.id)).data;
+      if (detail && String(detail.id) === String(item.id)) populateEditForm(detail);
+    } catch (requestError) {
+      setError(msg(requestError));
+    }
   }
   function newPlan() {
     setEditing({});
     setError('');
     setFieldErrors({});
+    setCommissionFeedback('');
+    setCommissionBases({});
     setForm({
       nome: '',
       descricao: '',
@@ -1022,6 +1047,29 @@ export function AdminPlansPage() {
       } else {
         setError(msg(e2));
       }
+    }
+  }
+  async function saveCommissionBase(service) {
+    const rawValue = commissionBases[String(service.id)] ?? '';
+    const value = parsePrice(rawValue);
+    setCommissionFeedback('');
+    if (!editing?.id) {
+      setCommissionFeedback('Salve o plano antes de configurar valores-base.');
+      return;
+    }
+    if (!value || !/^(0|[1-9]\d{0,7})(\.\d{1,2})?$/.test(value) || Number(value) <= 0) {
+      setCommissionFeedback(`Informe um valor-base válido para ${service.nome}.`);
+      return;
+    }
+    setCommissionSaving(String(service.id));
+    try {
+      await comissaoService.configurePlanService(editing.id, service.id, value);
+      setCommissionBases((current) => ({ ...current, [String(service.id)]: value }));
+      setCommissionFeedback(`Valor-base de ${service.nome} salvo.`);
+    } catch (requestError) {
+      setCommissionFeedback(msg(requestError));
+    } finally {
+      setCommissionSaving('');
     }
   }
   async function act() {
@@ -1234,15 +1282,46 @@ export function AdminPlansPage() {
           <fieldset className="card">
             <legend>Serviços incluídos</legend>
             {activeServices.map((s) => (
-              <label key={s.id} className="cluster">
-                <input
-                  type="checkbox"
-                  checked={form.servicos.includes(String(s.id))}
-                  onChange={() => toggleService(s.id)}
-                />
-                {s.nome}
-              </label>
+              <div key={s.id} className="plan-service-commission">
+                <label className="cluster">
+                  <input
+                    type="checkbox"
+                    checked={form.servicos.includes(String(s.id))}
+                    onChange={() => toggleService(s.id)}
+                  />
+                  {s.nome}
+                </label>
+                {form.servicos.includes(String(s.id)) && (
+                  <div className="plan-service-commission__fields">
+                    <Input
+                      label={`Valor-base para comissão — ${s.nome}`}
+                      inputMode="decimal"
+                      placeholder="Não configurado"
+                      value={commissionBases[String(s.id)] ?? ''}
+                      onChange={(event) =>
+                        setCommissionBases((current) => ({
+                          ...current,
+                          [String(s.id)]: event.target.value,
+                        }))
+                      }
+                    />
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      loading={commissionSaving === String(s.id)}
+                      disabled={!editing?.id}
+                      onClick={() => saveCommissionBase(s)}
+                    >
+                      Salvar valor-base
+                    </Button>
+                  </div>
+                )}
+              </div>
             ))}
+            {!editing?.id && form.servicos.length > 0 && (
+              <p>Salve o plano para habilitar a configuração dos valores-base.</p>
+            )}
+            {commissionFeedback && <Alert>{commissionFeedback}</Alert>}
           </fieldset>
           <fieldset className="card">
             <legend>Profissionais</legend>
@@ -1318,6 +1397,7 @@ export function AdminSubscriptionsPage() {
     [selected, setSelected] = useState(null),
     [dialog, setDialog] = useState(null),
     [motivo, setMotivo] = useState(''),
+    [payment, setPayment] = useState({ referencia: '', valor: '', observacao: '' }),
     [error, setError] = useState(''),
     [creating, setCreating] = useState(false),
     [form, setForm] = useState({
@@ -1357,9 +1437,18 @@ export function AdminSubscriptionsPage() {
   async function act() {
     if (!selected) return;
     try {
-      await adminPlanoService.updateAssinaturaStatus(selected.id, dialog, motivo.trim());
+      if (dialog === 'confirmar-pagamento') {
+        await adminPlanoService.confirmAssinaturaPayment(selected.id, {
+          referencia: payment.referencia,
+          valor: payment.valor,
+          observacao: payment.observacao,
+        });
+      } else {
+        await adminPlanoService.updateAssinaturaStatus(selected.id, dialog, motivo.trim());
+      }
       setDialog(null);
       setMotivo('');
+      setPayment({ referencia: '', valor: '', observacao: '' });
       setError('');
       state.reload();
     } catch (e2) {
@@ -1395,36 +1484,57 @@ export function AdminSubscriptionsPage() {
           ]}
           renderActions={(r) => (
             <div className="cluster">
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setSelected(r);
-                  setDialog('suspender');
-                  setMotivo('');
-                }}
-              >
-                Suspender
-              </Button>
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  setSelected(r);
-                  setDialog('reativar');
-                  setMotivo('');
-                }}
-              >
-                Reativar
-              </Button>
-              <Button
-                variant="danger"
-                onClick={() => {
-                  setSelected(r);
-                  setDialog('cancelar');
-                  setMotivo('');
-                }}
-              >
-                Cancelar
-              </Button>
+              {r.status === 'aguardando_pagamento' && (
+                <Button
+                  onClick={() => {
+                    setSelected(r);
+                    setDialog('confirmar-pagamento');
+                    setPayment({
+                      referencia: String(r.inicio_em).slice(0, 7),
+                      valor: r.valor_contratado ?? '',
+                      observacao: '',
+                    });
+                  }}
+                >
+                  Confirmar pagamento
+                </Button>
+              )}
+              {r.status === 'ativa' && (
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setSelected(r);
+                    setDialog('suspender');
+                    setMotivo('');
+                  }}
+                >
+                  Suspender
+                </Button>
+              )}
+              {r.status === 'suspensa' && (
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setSelected(r);
+                    setDialog('reativar');
+                    setMotivo('');
+                  }}
+                >
+                  Reativar
+                </Button>
+              )}
+              {['aguardando_pagamento', 'ativa', 'suspensa'].includes(r.status) && (
+                <Button
+                  variant="danger"
+                  onClick={() => {
+                    setSelected(r);
+                    setDialog('cancelar');
+                    setMotivo('');
+                  }}
+                >
+                  Cancelar
+                </Button>
+              )}
             </div>
           )}
         />
@@ -1497,15 +1607,47 @@ export function AdminSubscriptionsPage() {
         title="Confirmar operação na assinatura"
       >
         <div className="stack">
-          <Input
-            label="Motivo"
-            required
-            value={motivo}
-            onChange={(e) => setMotivo(e.target.value)}
-          />
+          {dialog === 'confirmar-pagamento' ? (
+            <>
+              <Input
+                label="Referência"
+                type="month"
+                required
+                value={payment.referencia}
+                onChange={(e) => setPayment({ ...payment, referencia: e.target.value })}
+              />
+              <Input
+                label="Valor"
+                inputMode="decimal"
+                required
+                value={payment.valor}
+                onChange={(e) => setPayment({ ...payment, valor: e.target.value })}
+              />
+              <Input
+                label="Observação (opcional)"
+                value={payment.observacao}
+                onChange={(e) => setPayment({ ...payment, observacao: e.target.value })}
+              />
+            </>
+          ) : (
+            <Input
+              label="Motivo"
+              required
+              value={motivo}
+              onChange={(e) => setMotivo(e.target.value)}
+            />
+          )}
           {error && <Alert type="error">{error}</Alert>}
           <div className="cluster">
-            <Button variant="danger" onClick={act} disabled={!motivo.trim()}>
+            <Button
+              variant="danger"
+              onClick={act}
+              disabled={
+                dialog === 'confirmar-pagamento'
+                  ? !payment.referencia || !payment.valor
+                  : !motivo.trim()
+              }
+            >
               Confirmar
             </Button>
             <Button variant="secondary" onClick={() => setDialog(null)}>
@@ -1658,7 +1800,11 @@ export function AdminSchedulesPage() {
 export function AdminBlocksPage() {
   useDocumentTitle('Bloqueios');
   const [page, setPage] = useState(1),
-    [form, setForm] = useState({ barbeiroId: '', inicioLocal: '', fimLocal: '', motivo: '' }),
+    [form, setForm] = useState(() => ({
+      barbeiroId: '',
+      ...createInitialBlockPeriod(),
+      motivo: '',
+    })),
     [message, setMessage] = useState('');
   const state = useRemoteData(() => adminService.blocks({ page, limit: 20 }), [page]),
     barbers = useRemoteData(() => barbeiroService.listAdmin({ limit: 100, ativo: 'true' }), []);

@@ -12,7 +12,7 @@ import * as planoRepository from '../repositories/planoRepository.js';
 import * as usoPlanoRepository from '../repositories/usoPlanoRepository.js';
 import * as historicoPlanoRepository from '../repositories/historicoPlanoRepository.js';
 import { AppError } from '../utils/AppError.js';
-import { isValidTimeZone } from '../utils/dateTime.js';
+import { civilDateAt, isValidTimeZone } from '../utils/dateTime.js';
 import { paginationResult, parsePagination } from '../utils/pagination.js';
 
 const IDEMPOTENCY_KEY_PATTERN = new RegExp(
@@ -115,19 +115,26 @@ async function checkSubscriptionOverlap(clientId, inicioEm, fimEm, connection) {
 
 async function copySnapshotData(planoId, connection) {
   const [servicos, barbeiros] = await Promise.all([
-    planoRepository.listarServicosDoPlano(planoId, connection),
+    planoRepository.listarServicosDoPlano(planoId, { connection }),
     planoRepository.listarBarbeirosDoPlano(planoId, connection),
   ]);
   return { servicos, barbeiros };
 }
 
-async function createSubscription({ payload, keyHash, payloadHash, connection, evento, actorId }) {
+async function createSubscription({
+  payload,
+  keyHash,
+  payloadHash,
+  connection,
+  evento,
+  actorId,
+  nowUtc,
+}) {
   const plano = await loadSubscribablePlan(payload.planoId, connection);
   const adesaoIni = toCivilDate(plano.adesao_inicio);
   const adesaoFim = toCivilDate(plano.adesao_fim);
-  if (!isInPeriod({ date: payload.inicioEm, inicio: adesaoIni, fim: adesaoFim }))
-    throw new AppError('Data fora do período de adesão.', 422, 'ENROLLMENT_OUTSIDE_PERIOD');
-  if (!isInPeriod({ date: payload.fimEm, inicio: adesaoIni, fim: adesaoFim }))
+  const dataSolicitacao = civilDateAt(nowUtc, payload.fusoHorario);
+  if (!isInPeriod({ date: dataSolicitacao, inicio: adesaoIni, fim: adesaoFim }))
     throw new AppError('Data fora do período de adesão.', 422, 'ENROLLMENT_OUTSIDE_PERIOD');
   await checkSubscriptionOverlap(payload.clientId, payload.inicioEm, payload.fimEm, connection);
 
@@ -168,7 +175,13 @@ async function createSubscription({ payload, keyHash, payloadHash, connection, e
   return assinaturaId;
 }
 
-export async function solicitarAdesao({ data, actorId, idempotencyKey, requestId }) {
+export async function solicitarAdesao({
+  data,
+  actorId,
+  idempotencyKey,
+  requestId,
+  nowUtc = new Date(),
+}) {
   const payload = normalizeSubscriptionPayload({ ...data, actorId });
   assertSubscriptionPayload(payload);
   const idem = buildIdempotency({
@@ -206,6 +219,7 @@ export async function solicitarAdesao({ data, actorId, idempotencyKey, requestId
           connection,
           evento: 'assinatura_solicitada',
           actorId: payload.actorId,
+          nowUtc,
         });
         return { assinaturaId, replay: false };
       },
@@ -229,7 +243,12 @@ export async function solicitarAdesao({ data, actorId, idempotencyKey, requestId
   }
 }
 
-export async function criarAssinaturaAdministrativa({ data, actorId, requestId }) {
+export async function criarAssinaturaAdministrativa({
+  data,
+  actorId,
+  requestId,
+  nowUtc = new Date(),
+}) {
   const payload = normalizeSubscriptionPayload({ ...data, actorId });
   assertSubscriptionPayload(payload);
   const logContext = { requestId, usuarioId: actorId, operation: 'subscription_create_admin' };
@@ -243,6 +262,7 @@ export async function criarAssinaturaAdministrativa({ data, actorId, requestId }
         connection,
         evento: 'assinatura_solicitada',
         actorId: payload.actorId,
+        nowUtc,
       });
       return assinaturaId;
     },
@@ -379,5 +399,39 @@ export async function cancelarAssinatura({ id, motivo, actorId, requestId }) {
     evento: 'assinatura_cancelada',
     nota: 'Assinatura cancelada',
     requestId,
+  });
+}
+
+export async function cancelarMinhaAssinatura({ clientId, motivo, requestId }) {
+  if (!motivo?.trim()) throw new AppError('Motivo obrigatório.', 422, 'VALIDATION_ERROR');
+  return runTransactionWithRetry({
+    logContext: { requestId, usuarioId: clientId, operation: 'subscription_cancel_own' },
+    operation: async ({ connection }) => {
+      const assinatura = await assinaturaPlanoRepository.buscarMeuPlanoForUpdate(
+        clientId,
+        connection,
+      );
+      if (!assinatura)
+        throw new AppError('Assinatura não encontrada.', 404, 'SUBSCRIPTION_NOT_FOUND');
+      assertSubscriptionTransition(assinatura.status, 'cancelada');
+      await assinaturaPlanoRepository.atualizarStatus(
+        assinatura.id,
+        'cancelada',
+        { actorId: clientId, motivo: motivo.trim(), now: new Date() },
+        connection,
+      );
+      await historicoPlanoRepository.registrarEvento(
+        {
+          subscriptionId: assinatura.id,
+          type: 'assinatura_cancelada',
+          actorId: clientId,
+          note: motivo.trim(),
+          before: { status: assinatura.status },
+          after: { status: 'cancelada' },
+        },
+        connection,
+      );
+      return assinatura.id;
+    },
   });
 }

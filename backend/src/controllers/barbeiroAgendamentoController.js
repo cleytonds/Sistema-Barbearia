@@ -1,5 +1,6 @@
 import * as queryService from '../services/agendamentoQueryService.js';
 import * as statusService from '../services/agendamentoStatusService.js';
+import * as archiveService from '../services/agendamentoArquivoService.js';
 import { parsePagination } from '../utils/pagination.js';
 
 const sorts = { inicio: 'a.inicio_em', criadoEm: 'a.criado_em', status: 'a.status' };
@@ -37,4 +38,12 @@ export async function updateStatus(request, response) {
       role: 'barbeiro',
     }),
   });
+}
+
+export async function archive(request, response) {
+  await archiveService.archiveMine({
+    id: request.params.id,
+    userId: request.auth.usuario.id,
+  });
+  response.status(204).end();
 }

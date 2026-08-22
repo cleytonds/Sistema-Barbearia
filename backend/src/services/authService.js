@@ -13,6 +13,7 @@ import {
   toPublicUser,
 } from '../repositories/userRepository.js';
 import { sendPasswordRecoveryEmail } from './emailService.js';
+import { logger } from '../utils/logger.js';
 
 const genericLoginError = () =>
   new AppError('E-mail ou senha inválidos.', 401, 'INVALID_CREDENTIALS');
@@ -78,7 +79,10 @@ export async function logout(auth) {
  * Inicia recuperação sem revelar se a conta existe.
  * Tokens anteriores são invalidados na mesma transação e somente o hash do novo token é salvo.
  */
-export async function requestPasswordRecovery(emailInput) {
+export async function requestPasswordRecovery(
+  emailInput,
+  { sendEmail = sendPasswordRecoveryEmail } = {},
+) {
   const user = await findUserByEmail(normalizeEmail(emailInput));
   if (!user || !user.ativo) return;
   const { token, tokenHash } = generateRecoveryToken();
@@ -102,9 +106,16 @@ export async function requestPasswordRecovery(emailInput) {
     connection.release();
   }
   try {
-    await sendPasswordRecoveryEmail({ email: user.email, token });
-  } catch {
-    console.error('[email] falha ao enviar recuperação de senha');
+    await sendEmail({ email: user.email, token });
+  } catch (error) {
+    const errorCode =
+      typeof error.code === 'string' && /^[A-Z][A-Z0-9_]{0,63}$/.test(error.code)
+        ? error.code
+        : 'EMAIL_SEND_FAILED';
+    logger.error('password_recovery_email_failed', {
+      operation: 'password_recovery_email',
+      errorCode,
+    });
   }
 }
 
@@ -118,10 +129,11 @@ export async function resetPassword({ token, novaSenha }) {
     await connection.beginTransaction();
     const [[record]] = await connection.execute(
       `SELECT id, usuario_id, expira_em, utilizado_em FROM tokens_recuperacao_senha
-       WHERE token_hash = ? LIMIT 1 FOR UPDATE`,
+       WHERE token_hash = ? AND utilizado_em IS NULL AND expira_em > UTC_TIMESTAMP(6)
+       LIMIT 1 FOR UPDATE`,
       [hashRecoveryToken(token)],
     );
-    if (!record || record.utilizado_em || new Date(record.expira_em) <= new Date()) {
+    if (!record) {
       throw new AppError(
         'Token de recuperação inválido ou expirado.',
         400,

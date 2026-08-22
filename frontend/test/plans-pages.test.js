@@ -20,7 +20,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const React = await import('react');
 const { render, cleanup, fireEvent, screen, waitFor, within } =
   await import('@testing-library/react');
-const { MemoryRouter } = await import('react-router-dom');
+const { MemoryRouter, useLocation } = await import('react-router-dom');
 const { AuthContext } = await import('../src/contexts/AuthContext.jsx');
 const { ToastProvider } = await import('../src/contexts/ToastContext.jsx');
 const { api } = await import('../src/api/client.js');
@@ -32,10 +32,14 @@ const { AppRoutes } = await import('../src/routes/AppRoutes.jsx');
 const { normalizePlan } = await import('../src/services/planoService.js');
 
 const originalAdapter = api.defaults.adapter;
+const originalWindowOpen = window.open;
+const originalConsoleError = console.error;
 
 test.afterEach(() => {
   cleanup();
   api.defaults.adapter = originalAdapter;
+  window.open = originalWindowOpen;
+  console.error = originalConsoleError;
 });
 
 const response = (data, status = 200) => ({
@@ -52,7 +56,12 @@ const ok = (data) => async () => response(data);
  * Wraps a page in the providers it needs (Router, Auth, Toast). The api adapter
  * returns empty, safe payloads so the four pages render without throwing.
  */
-function renderPage(element) {
+function LocationProbe() {
+  const location = useLocation();
+  return React.createElement('output', { 'data-testid': 'current-route' }, location.pathname);
+}
+
+function renderPage(element, { initialEntries = ['/'], trackLocation = false } = {}) {
   return render(
     React.createElement(
       ToastProvider,
@@ -69,7 +78,12 @@ function renderPage(element) {
             onLogin: async () => {},
           },
         },
-        React.createElement(MemoryRouter, null, element),
+        React.createElement(
+          MemoryRouter,
+          { initialEntries },
+          element,
+          trackLocation ? React.createElement(LocationProbe) : null,
+        ),
       ),
     ),
   );
@@ -261,6 +275,39 @@ test('AdminSubscriptionsPage renderiza com resposta vazia sem exceção', async 
   await waitFor(() => assert.ok(screen.getByText('Assinaturas')));
 });
 
+test('AdminSubscriptionsPage renderiza assinatura aguardando pagamento da rota real', async () => {
+  const calls = [];
+  api.defaults.adapter = async (config) => {
+    calls.push(config.url);
+    if (config.url === '/admin/assinaturas-planos')
+      return response({
+        data: [
+          {
+            id: '307',
+            cliente_nome: 'Cliente da assinatura',
+            plano_nome_snapshot: 'Plano da assinatura',
+            status: 'aguardando_pagamento',
+            inicio_em: '2026-08-11',
+            fim_em: '2026-11-11',
+          },
+        ],
+        pagination: { page: 1, limit: 20, total: 1, totalPages: 1 },
+      });
+    return response({ data: [], pagination: { page: 1, totalPages: 1 } });
+  };
+
+  renderPage(React.createElement(AdminSubscriptionsPage));
+
+  await waitFor(() => assert.ok(screen.getByText('Cliente da assinatura')));
+  assert.ok(screen.getByText('Plano da assinatura'));
+  assert.ok(screen.getByText('Aguardando pagamento'));
+  assert.ok(screen.getByRole('button', { name: 'Confirmar pagamento' }));
+  assert.equal(screen.queryByRole('button', { name: 'Suspender' }), null);
+  assert.equal(screen.queryByRole('button', { name: 'Reativar' }), null);
+  assert.ok(calls.includes('/admin/assinaturas-planos'));
+  assert.equal(calls.includes('/admin/assinaturas'), false);
+});
+
 // ===========================================================================
 // /planos (pública) — resposta vazia e campos opcionais nulos
 // ===========================================================================
@@ -407,6 +454,110 @@ test('PlanosPage renderiza um serviço e um profissional no detalhe', async () =
   assert.equal(screen.queryByRole('heading', { name: 'Utilizações no total' }), null);
 });
 
+test('PlanosPage solicita assinatura pela rota oficial com período e idempotência', async () => {
+  let request;
+  let opened;
+  const consoleErrors = [];
+  console.error = (...args) => consoleErrors.push(args);
+  window.open = (...args) => {
+    opened = args;
+    return null;
+  };
+  api.defaults.adapter = async (config) => {
+    if (config.method === 'post') {
+      request = config;
+      return response({ replay: false, data: { id: '70', status: 'aguardando_pagamento' } }, 201);
+    }
+    if (config.url === '/planos/52')
+      return response({
+        data: {
+          id: '52',
+          nome: 'Plano para assinar',
+          preco: '90.00',
+          utilizacaoInicio: '2026-08-08T00:00:00.000Z',
+          utilizacaoFim: '2026-11-30T00:00:00.000Z',
+          possuiLimiteSemanal: true,
+          limiteSemanal: 1,
+          servicos: [{ id: '5', nome: 'Corte real' }],
+          barbeiros: [{ id: '8', nome: 'Profissional real' }],
+          senha: 'segredo-que-nao-pode-sair',
+          token: 'jwt-que-nao-pode-sair',
+          email: 'cliente@example.test',
+        },
+      });
+    if (config.url === '/configuracoes/publicas')
+      return response({ data: { telefone: '+55 (81) 99268-0506' } });
+    return response({
+      data: [{ id: '52', nome: 'Plano para assinar', preco: '90.00' }],
+      pagination: { page: 1, totalPages: 1 },
+    });
+  };
+  renderPage(React.createElement(PlanosPage), {
+    initialEntries: ['/planos'],
+    trackLocation: true,
+  });
+  assert.equal(screen.getByTestId('current-route').textContent, '/planos');
+  await waitFor(() => screen.getByText('Plano para assinar'));
+  fireEvent.click(screen.getByRole('button', { name: 'Ver detalhes do plano' }));
+  await waitFor(() => screen.getByRole('button', { name: 'Confirmar assinatura' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Confirmar assinatura' }));
+  await waitFor(() => assert.ok(opened));
+  assert.equal(request.method, 'post');
+  assert.equal(request.url, '/planos/52/solicitacoes');
+  assert.deepEqual(JSON.parse(request.data), {
+    inicioEm: '2026-08-08',
+    fimEm: '2026-11-30',
+  });
+  assert.ok(request.headers['Idempotency-Key'].length >= 16);
+  assert.equal(opened[1], '_blank');
+  assert.equal(opened[2], 'noopener,noreferrer');
+  const whatsappUrl = new URL(opened[0]);
+  assert.equal(`${whatsappUrl.origin}${whatsappUrl.pathname}`, 'https://wa.me/5581992680506');
+  const message = whatsappUrl.searchParams.get('text');
+  assert.match(message, /Plano: Plano para assinar/);
+  assert.match(message, /Valor: R\$\s*90,00/);
+  assert.match(message, /Período: 8 de agosto de 2026 a 30 de novembro de 2026/);
+  assert.match(message, /Utilizações por semana: 1/);
+  assert.match(message, /Serviços incluídos:\n- Corte real/);
+  assert.match(message, /Profissionais:\n- Profissional real/);
+  assert.doesNotMatch(message, /segredo-que-nao-pode-sair|jwt-que-nao-pode-sair|example\.test/);
+  await waitFor(() => assert.equal(screen.queryByRole('dialog'), null));
+  assert.ok(screen.getByRole('heading', { name: 'Planos' }));
+  assert.equal(screen.getByTestId('current-route').textContent, '/planos');
+  assert.deepEqual(consoleErrors, []);
+});
+
+test('PlanosPage apresenta mensagem amigável quando solicitação falha', async () => {
+  let openCalls = 0;
+  window.open = () => {
+    openCalls += 1;
+  };
+  api.defaults.adapter = async (config) => {
+    if (config.method === 'post')
+      throw { response: { data: { error: { message: 'Plano indisponível para adesão.' } } } };
+    if (config.url === '/planos/52')
+      return response({
+        data: {
+          id: '52',
+          nome: 'Plano indisponível',
+          preco: '90.00',
+          utilizacaoInicio: '2026-08-08',
+          utilizacaoFim: '2026-11-30',
+          servicos: [],
+          barbeiros: [],
+        },
+      });
+    return response({ data: [{ id: '52', nome: 'Plano indisponível', preco: '90.00' }] });
+  };
+  renderPage(React.createElement(PlanosPage));
+  await waitFor(() => screen.getByText('Plano indisponível'));
+  fireEvent.click(screen.getByRole('button', { name: 'Ver detalhes do plano' }));
+  await waitFor(() => screen.getByRole('button', { name: 'Confirmar assinatura' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Confirmar assinatura' }));
+  await waitFor(() => assert.ok(screen.getByText('Plano indisponível para adesão.')));
+  assert.equal(openCalls, 0);
+});
+
 test('PlanosPage informa claramente quando o detalhe não possui vínculos', async () => {
   api.defaults.adapter = async (config) =>
     config.url === '/planos/8'
@@ -485,6 +636,34 @@ test('MeuPlanoPage renderiza plano válido em camelCase', async () => {
   assert.ok(screen.getByText('8'));
 });
 
+test('MeuPlanoPage renderiza assinatura aguardando pagamento com datas ISO da API', async () => {
+  api.defaults.adapter = async (config) => {
+    if (config.url === '/meu-plano') {
+      return response({
+        data: {
+          id: '307',
+          status: 'aguardando_pagamento',
+          inicio_em: '2026-08-11T00:00:00.000Z',
+          fim_em: '2026-11-11T00:00:00.000Z',
+          valor_contratado: '90.00',
+          plano_nome_snapshot: 'Plano aguardando pagamento',
+          possui_limite_total_snapshot: false,
+          limite_total_snapshot: null,
+          servicos: [],
+          barbeiros: [],
+        },
+      });
+    }
+    if (config.url === '/meu-plano/usos') return response({ data: [] });
+    return response({ data: [] });
+  };
+
+  renderPage(React.createElement(MeuPlanoPage));
+
+  await waitFor(() => assert.ok(screen.getByText('Plano aguardando pagamento')));
+  assert.ok(screen.getByText('Aguardando pagamento'));
+});
+
 test('MeuPlanoPage renderiza assinatura com campos opcionais nulos', async () => {
   api.defaults.adapter = async (config) => {
     if (config.url === '/meu-plano') {
@@ -513,6 +692,76 @@ test('MeuPlanoPage renderiza assinatura com campos opcionais nulos', async () =>
   await waitFor(() => assert.ok(screen.getByText('Plano Corte')));
   assert.ok(screen.getByText('Ilimitado'));
   assert.ok(screen.getByText((content) => content.includes('Inadimplência')));
+});
+
+test('MeuPlanoPage renderiza assinatura cancelada com campos ausentes', async () => {
+  api.defaults.adapter = async (config) =>
+    config.url === '/meu-plano'
+      ? response({ data: { id: '308', status: 'cancelada' } })
+      : response({ data: [] });
+
+  renderPage(React.createElement(MeuPlanoPage));
+
+  await waitFor(() => assert.ok(screen.getByText('Cancelada')));
+  assert.ok(screen.getByText('Plano mensal'));
+  assert.equal(screen.getAllByText(/Data não informada/).length, 1);
+  assert.equal(screen.queryByRole('button', { name: 'Cancelar plano' }), null);
+});
+
+test('MeuPlanoPage cancela plano suspenso com uma request e atualiza sem piscar', async () => {
+  const calls = [];
+  api.defaults.adapter = async (config) => {
+    calls.push(`${config.method.toUpperCase()} ${config.url}`);
+    if (config.url === '/meu-plano')
+      return response({
+        data: {
+          id: '401',
+          status: 'suspensa',
+          plano_nome_snapshot: 'Plano suspenso',
+          motivo_status: 'Pausa',
+        },
+      });
+    if (config.url === '/meu-plano/cancelar')
+      return response({
+        data: { id: '401', status: 'cancelada', plano_nome_snapshot: 'Plano suspenso' },
+      });
+    return response({ data: [] });
+  };
+  renderPage(React.createElement(MeuPlanoPage));
+  await waitFor(() => assert.ok(screen.getByText('Plano suspenso')));
+  fireEvent.click(screen.getByRole('button', { name: 'Cancelar plano' }));
+  fireEvent.change(screen.getByLabelText('Motivo do cancelamento'), {
+    target: { value: 'Não desejo continuar' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Confirmar cancelamento' }));
+  await waitFor(() => assert.ok(screen.getByText('Cancelada')));
+  assert.equal(screen.queryByRole('dialog'), null);
+  assert.equal(calls.filter((call) => call === 'POST /meu-plano/cancelar').length, 1);
+});
+
+test('erro ao cancelar mantém o modal estável e não repete a request', async () => {
+  let cancelCalls = 0;
+  api.defaults.adapter = async (config) => {
+    if (config.url === '/meu-plano')
+      return response({ data: { id: '402', status: 'ativa', plano_nome_snapshot: 'Plano ativo' } });
+    if (config.url === '/meu-plano/cancelar') {
+      cancelCalls += 1;
+      throw {
+        response: { data: { error: { message: 'Não foi possível cancelar.' } } },
+      };
+    }
+    return response({ data: [] });
+  };
+  renderPage(React.createElement(MeuPlanoPage));
+  await waitFor(() => assert.ok(screen.getByText('Plano ativo')));
+  fireEvent.click(screen.getByRole('button', { name: 'Cancelar plano' }));
+  fireEvent.change(screen.getByLabelText('Motivo do cancelamento'), {
+    target: { value: 'Motivo válido' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Confirmar cancelamento' }));
+  await waitFor(() => assert.ok(within(screen.getByRole('dialog')).getByRole('alert')));
+  assert.equal(screen.getByRole('dialog').open, true);
+  assert.equal(cancelCalls, 1);
 });
 
 // ===========================================================================

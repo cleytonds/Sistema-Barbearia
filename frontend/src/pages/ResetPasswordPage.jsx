@@ -5,6 +5,30 @@ import { BrandMark } from '../components/brand/BrandMark.jsx';
 import { Alert, Button, PasswordInput } from '../components/ui/index.jsx';
 import { useAuth } from '../hooks/useAuth.js';
 import { useDocumentTitle } from '../hooks/useDocumentTitle.js';
+import { apiError } from '../utils/apiError.js';
+
+export function validateNewPassword(password) {
+  if (password.length < 8 || password.length > 72)
+    return 'A senha deve ter entre 8 e 72 caracteres.';
+  if (!/[A-Za-zÀ-ÿ]/.test(password)) return 'A senha deve conter pelo menos uma letra.';
+  if (!/\d/.test(password)) return 'A senha deve conter pelo menos um número.';
+  return null;
+}
+
+export function resetPasswordErrorMessage(requestError) {
+  const parsed = apiError(requestError);
+  const validationMessage = parsed.fieldErrors.novaSenha ?? parsed.fieldErrors.confirmacaoNovaSenha;
+  if (validationMessage) return `A nova senha ${validationMessage}.`;
+  if (parsed.code === 'INVALID_RECOVERY_TOKEN') return 'Link inválido ou expirado.';
+  if (parsed.code === 'PASSWORD_UNCHANGED')
+    return 'A nova senha deve ser diferente da senha atual.';
+  if (requestError.response?.status === 429)
+    return 'Muitas tentativas. Aguarde alguns minutos e tente novamente.';
+  if (!requestError.response)
+    return 'Não foi possível conectar ao servidor. Verifique sua conexão e tente novamente.';
+  return 'Não foi possível redefinir a senha. Tente novamente.';
+}
+
 export default function ResetPasswordPage() {
   useDocumentTitle('Redefinir senha');
   const { resetPassword } = useAuth();
@@ -17,13 +41,15 @@ export default function ResetPasswordPage() {
   async function submit(e) {
     e.preventDefault();
     if (!token) return setError('Link inválido ou expirado.');
+    const passwordError = validateNewPassword(form.novaSenha);
+    if (passwordError) return setError(passwordError);
     if (form.novaSenha !== form.confirmacaoNovaSenha) return setError('As senhas não conferem.');
     setLoading(true);
     try {
       await resetPassword({ token, ...form });
       setSuccess(true);
-    } catch {
-      setError('Link inválido ou expirado.');
+    } catch (requestError) {
+      setError(resetPasswordErrorMessage(requestError));
     } finally {
       setLoading(false);
     }

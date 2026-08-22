@@ -27,7 +27,12 @@ async function request(path, { method = 'GET', body, token = adminToken } = {}) 
     method,
     headers: {
       ...(body && { 'content-type': 'application/json' }),
-      ...(token && { authorization: `Bearer ${token}` }),
+      ...(token && { cookie: `barbearia_session=${token}` }),
+      ...(token &&
+        ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) && {
+          origin: 'http://localhost:5173',
+          'x-csrf-protection': '1',
+        }),
     },
     ...(body && { body: JSON.stringify(body) }),
   });
@@ -527,8 +532,8 @@ test('configurações têm exposição, limites, singleton e atualização atôm
 
 test('bloqueios aplicam propriedade, UTC, conflitos, exclusão e locks', async () => {
   const own = {
-    inicioLocal: '2035-10-10T09:00:00',
-    fimLocal: '2035-10-10T10:00:00',
+    inicioLocal: '2035-10-10T09:00',
+    fimLocal: '2035-10-10T10:00',
     motivo: `${prefix} próprio`,
   };
   assert.equal(

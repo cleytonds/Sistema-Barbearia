@@ -1,11 +1,18 @@
 import * as authService from '../services/authService.js';
+import { clearAuthCookie, setAuthCookie } from '../auth/authCookie.js';
+
+function respondWithSession(response, status, session) {
+  setAuthCookie(response, session);
+  const { usuario, expiresIn } = session;
+  response.status(status).json({ usuario, expiresIn });
+}
 
 export async function register(req, res) {
-  res.status(201).json(await authService.register(req.body));
+  respondWithSession(res, 201, await authService.register(req.body));
 }
 
 export async function login(req, res) {
-  res.json(await authService.login(req.body));
+  respondWithSession(res, 200, await authService.login(req.body));
 }
 
 export async function me(req, res) {
@@ -13,7 +20,11 @@ export async function me(req, res) {
 }
 
 export async function logout(req, res) {
-  await authService.logout(req.auth);
+  try {
+    await authService.logout(req.auth);
+  } finally {
+    clearAuthCookie(res);
+  }
   res.status(204).end();
 }
 
@@ -28,5 +39,5 @@ export async function resetPassword(req, res) {
 }
 
 export async function changePassword(req, res) {
-  res.json(await authService.changePassword(req.auth.usuario.id, req.body));
+  respondWithSession(res, 200, await authService.changePassword(req.auth.usuario.id, req.body));
 }

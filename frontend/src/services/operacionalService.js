@@ -16,6 +16,7 @@ export const operacionalService = {
     (await api.get(`/barbeiro/agendamentos/${id}`, { signal })).data,
   updateAppointmentStatus: async (id, status, justificativa) =>
     (await api.put(`/barbeiro/agendamentos/${id}/status`, { status, justificativa })).data,
+  archiveAppointment: async (id) => api.put(`/barbeiro/agendamentos/${id}/arquivar`),
   myProfile: async () => (await api.get('/barbeiro/me')).data,
   updateMyProfile: async (data) => (await api.put('/barbeiro/me', data)).data,
   myServices: async () => (await api.get('/barbeiro/me/servicos')).data,

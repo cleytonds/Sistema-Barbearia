@@ -46,7 +46,10 @@ export default function BarberAppointmentDetailsPage() {
         <Alert type="error">{state.error.message}</Alert>
       ) : (
         <article className="card stack">
-          <Badge>{item.status}</Badge>
+          <div className="cluster">
+            <Badge>{item.status}</Badge>
+            {item.arquivado && <Badge>Arquivado</Badge>}
+          </div>
           <h2>{item.cliente.nome}</h2>
           <dl>
             <dt>Serviço</dt>

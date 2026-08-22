@@ -37,7 +37,12 @@ async function api(path, token, options = {}) {
     ...options,
     headers: {
       ...(options.body && { 'content-type': 'application/json' }),
-      authorization: `Bearer ${token}`,
+      ...(token && { cookie: `barbearia_session=${token}` }),
+      ...(token &&
+        ['POST', 'PUT', 'PATCH', 'DELETE'].includes(options.method ?? 'GET') && {
+          origin: 'http://localhost:5173',
+          'x-csrf-protection': '1',
+        }),
     },
   });
 }

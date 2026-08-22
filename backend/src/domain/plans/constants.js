@@ -25,6 +25,7 @@ export const TERMINAL_USAGE_STATUSES = Object.freeze([
   PLAN_USAGE_STATUS.RELEASED,
 ]);
 export const BILLING_TYPE = Object.freeze({ SINGLE: 'avulso', PLAN: 'plano' });
+export const PLAN_CANCELLATION_RELEASE_HOURS = 2;
 export const NO_COVERAGE_REASON = Object.freeze({
   NO_ACTIVE_SUBSCRIPTION: 'SEM_ASSINATURA_ATIVA',
   PAYMENT_PENDING: 'PAGAMENTO_PENDENTE',

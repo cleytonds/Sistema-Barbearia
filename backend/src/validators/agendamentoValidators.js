@@ -29,7 +29,11 @@ export const createAppointmentValidator = [
 export const cancelAppointmentValidator = [
   ...appointmentIdValidator,
   strictBody(['motivo']),
-  body('motivo').isString().trim().isLength({ min: 3, max: CANCELLATION_REASON_MAX_LENGTH }),
+  body('motivo')
+    .optional({ nullable: true })
+    .isString()
+    .trim()
+    .isLength({ max: CANCELLATION_REASON_MAX_LENGTH }),
 ];
 export const rescheduleAppointmentValidator = [
   ...appointmentIdValidator,

@@ -1,5 +1,5 @@
-import { useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { useCallback, useEffect } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import { Container } from '../components/layout/index.jsx';
 import { Alert, Card, EmptyState, Skeleton } from '../components/ui/index.jsx';
 import { useDocumentTitle } from '../hooks/useDocumentTitle.js';
@@ -8,8 +8,10 @@ import { barbeiroService } from '../services/barbeiroService.js';
 import { operacionalService } from '../services/operacionalService.js';
 import { servicoService } from '../services/servicoService.js';
 import { formatMoney } from '../utils/dateTime.js';
+import { ADMIN_PHONE_DISPLAY } from '../config/adminContact.js';
 
 export default function HomePage() {
+  const location = useLocation();
   useDocumentTitle('Início');
   const loader = useCallback(async () => {
     const [configuration, services, barbers, hours] = await Promise.all([
@@ -26,6 +28,10 @@ export default function HomePage() {
     };
   }, []);
   const { data, loading, error, reload } = useRemoteData(loader, [loader]);
+  useEffect(() => {
+    if (!location.hash) return;
+    document.getElementById(location.hash.slice(1))?.scrollIntoView();
+  }, [location.hash]);
   return (
     <>
       <section className="section">
@@ -121,7 +127,7 @@ export default function HomePage() {
       <section className="section">
         <Container>
           <h2>Informações</h2>
-          {data?.configuration?.telefone && <p>{data.configuration.telefone}</p>}
+          <p>{ADMIN_PHONE_DISPLAY}</p>
           {data?.configuration?.endereco && <p>{data.configuration.endereco}</p>}
           {data?.hours?.length > 0 && (
             <p>Os horários de funcionamento são exibidos conforme a configuração atual.</p>

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { JSDOM } from 'jsdom';
 import axe from 'axe-core';
@@ -18,17 +19,20 @@ HTMLDialogElement.prototype.close = function close() {
   this.dispatchEvent(new dom.window.Event('close'));
 };
 const React = await import('react');
-const { render, cleanup, fireEvent, screen, waitFor } = await import('@testing-library/react');
+const { render, cleanup, fireEvent, screen, waitFor, within } =
+  await import('@testing-library/react');
 const userEvent = (await import('@testing-library/user-event')).default;
-const { MemoryRouter } = await import('react-router-dom');
+const { MemoryRouter, Route, Routes, useLocation } = await import('react-router-dom');
 const { AuthContext } = await import('../src/contexts/AuthContext.jsx');
 const { BrandMark } = await import('../src/components/brand/BrandMark.jsx');
 const { Button, Dialog, EmptyState, Input, PasswordInput, Stepper } =
   await import('../src/components/ui/index.jsx');
-const { Footer, Header, SkipLink } = await import('../src/components/layout/index.jsx');
+const { Footer, Header, PublicLayout, SkipLink } =
+  await import('../src/components/layout/index.jsx');
 const { operacionalService } = await import('../src/services/operacionalService.js');
 const { servicoService } = await import('../src/services/servicoService.js');
 const NotFoundPage = (await import('../src/pages/NotFoundPage.jsx')).default;
+const globalStyles = await readFile(new URL('../src/styles/global.css', import.meta.url), 'utf8');
 const auth = { loading: false, isAuthenticated: false, usuario: null, logout() {} };
 function wrapper(children, authValue = auth) {
   return React.createElement(
@@ -133,6 +137,21 @@ test('Header visitante preserva navegação sem duplicar Agendar', async () => {
   assert.ok(screen.getByText('Pular para o conteúdo'));
   assert.ok(screen.getByRole('link', { name: 'Elite Barbearia 081 — início' }));
   assert.equal(screen.getAllByRole('link', { name: 'Agendar' }).length, 1);
+  assert.equal(screen.getByRole('link', { name: 'Agendar' }).getAttribute('href'), '/agendar');
+  assert.equal(screen.getByRole('link', { name: 'Entrar' }).getAttribute('href'), '/login');
+  assert.match(
+    globalStyles,
+    /\.header-actions\s*>\s*\.header-account-link\s*\{\s*display:\s*inline-flex;/,
+  );
+  assert.equal(screen.queryByRole('link', { name: 'Criar conta' }), null);
+  for (const [name, href] of [
+    ['Início', '/'],
+    ['Serviços', '/#servicos'],
+    ['Barbeiros', '/#profissionais'],
+    ['Planos', '/planos'],
+  ]) {
+    assert.equal(screen.getByRole('link', { name }).getAttribute('href'), href);
+  }
   assert.equal(screen.queryByRole('link', { name: 'Meus agendamentos' }), null);
   assert.ok(screen.getByRole('heading', { name: 'Página não encontrada.' }));
   const trigger = screen.getByRole('button', { name: 'Abrir menu' });
@@ -140,12 +159,19 @@ test('Header visitante preserva navegação sem duplicar Agendar', async () => {
   assert.equal(trigger.getAttribute('aria-controls'), 'mobile-navigation');
   await user.click(trigger);
   assert.equal(trigger.getAttribute('aria-expanded'), 'true');
-  assert.ok(screen.getByRole('dialog', { name: 'Menu principal' }));
+  const mobileMenu = within(screen.getByRole('dialog', { name: 'Menu principal' }));
+  assert.equal(mobileMenu.getByRole('link', { name: 'Entrar' }).getAttribute('href'), '/login');
+  assert.equal(
+    mobileMenu.getByRole('link', { name: 'Criar conta' }).getAttribute('href'),
+    '/cadastro',
+  );
+  assert.equal(screen.getAllByRole('link', { name: 'Criar conta' }).length, 1);
   await user.keyboard('{Escape}');
   assert.equal(screen.queryByRole('dialog', { name: 'Menu principal' }), null);
   assert.equal(document.activeElement, trigger);
 });
-test('Header exibe Meus agendamentos somente para cliente autenticado', () => {
+test('Header autenticado preserva Conta e Sair sem opções de visitante no menu mobile', async () => {
+  const user = userEvent.setup({ document });
   render(
     wrapper(React.createElement(Header), {
       loading: false,
@@ -157,8 +183,17 @@ test('Header exibe Meus agendamentos somente para cliente autenticado', () => {
   assert.ok(screen.getByRole('link', { name: 'Meus agendamentos' }));
   assert.ok(screen.getByRole('link', { name: 'Conta' }));
   assert.ok(screen.getByRole('button', { name: 'Sair' }));
+  await user.click(screen.getByRole('button', { name: 'Abrir menu' }));
+  const mobileMenu = within(screen.getByRole('dialog', { name: 'Menu principal' }));
+  assert.equal(
+    mobileMenu.getByRole('link', { name: 'Conta' }).getAttribute('href'),
+    '/meus-agendamentos',
+  );
+  assert.ok(mobileMenu.getByRole('button', { name: 'Sair' }));
+  assert.equal(mobileMenu.queryByRole('link', { name: 'Entrar' }), null);
+  assert.equal(mobileMenu.queryByRole('link', { name: 'Criar conta' }), null);
 });
-test('Footer consome serviços reais e omite telefone e endereço ausentes', async () => {
+test('Footer consome serviços reais, mantém contato oficial e omite endereço ausente', async () => {
   operacionalService.publicConfig = async () => ({ data: { telefone: null, endereco: null } });
   operacionalService.publicHours = async () => ({ data: [] });
   let receivedParameters;
@@ -170,13 +205,28 @@ test('Footer consome serviços reais e omite telefone e endereço ausentes', asy
   await waitFor(() => assert.ok(screen.getByText('Serviço real da API')));
   assert.deepEqual(receivedParameters, { page: 1, limit: 5, sort: 'nome', order: 'asc' });
   assert.ok(screen.getByRole('link', { name: 'Ver todos os serviços' }));
+  assert.equal(
+    screen.getByRole('link', { name: 'Serviço real da API' }).getAttribute('href'),
+    '/agendar?servicoId=7',
+  );
+  for (const [name, href] of [
+    ['Início', '/'],
+    ['Serviços', '/#servicos'],
+    ['Barbeiros', '/#profissionais'],
+    ['Planos', '/planos'],
+    ['Agendar horário', '/agendar'],
+    ['Meus agendamentos', '/meus-agendamentos'],
+    ['Meu plano', '/meu-plano'],
+  ]) {
+    assert.equal(screen.getByRole('link', { name }).getAttribute('href'), href);
+  }
   const instagram = screen.getAllByRole('link', {
     name: 'Abrir Instagram da Elite Barbearia 081 em nova aba',
   })[0];
   assert.equal(instagram.getAttribute('href'), 'https://www.instagram.com/barbeariaelite081/');
   assert.equal(instagram.getAttribute('target'), '_blank');
   assert.equal(instagram.getAttribute('rel'), 'noopener noreferrer');
-  assert.equal(screen.queryByText('Telefone'), null);
+  assert.ok(screen.getByText('(81) 99268-0506'));
   assert.equal(screen.queryByText('Endereço'), null);
   for (const link of ['Início', 'Serviços', 'Barbeiros', 'Agendar horário', 'Meus agendamentos'])
     assert.ok(screen.getByRole('link', { name: link }));
@@ -185,23 +235,78 @@ test('Footer consome serviços reais e omite telefone e endereço ausentes', asy
   assert.ok(screen.getByText(new RegExp(String(new Date().getFullYear()))));
   assert.equal(screen.getByAltText('Elite Barbearia 081').getAttribute('loading'), 'lazy');
 });
-test('Footer esconde seção de serviços vazia e mostra somente contato vindo da API', async () => {
+test('Footer esconde seção de serviços vazia e preserva o contato administrativo oficial', async () => {
   operacionalService.publicConfig = async () => ({
-    data: { telefone: '1992680506', endereco: 'Rua retornada pela API' },
+    data: { telefone: '5581992680506', endereco: 'Rua retornada pela API' },
   });
   operacionalService.publicHours = async () => ({
     data: [{ dia_semana: 1, ativo: true, hora_inicio: '09:00', hora_fim: '18:00' }],
   });
   servicoService.listPublic = async () => ({ data: [] });
   render(wrapper(React.createElement(Footer)));
-  await waitFor(() => assert.ok(screen.getByText('(19) 9268-0506')));
+  await waitFor(() => assert.ok(screen.getByText('(81) 99268-0506')));
   assert.equal(
-    screen.getByText('(19) 9268-0506').closest('a').getAttribute('href'),
-    'tel:1992680506',
+    screen.getByText('(81) 99268-0506').closest('a').getAttribute('href'),
+    'tel:5581992680506',
   );
   assert.ok(screen.getByText('Rua retornada pela API'));
   assert.equal(screen.queryByRole('heading', { name: 'Serviços' }), null);
   assert.ok(screen.getByText('Segunda: 09:00–18:00'));
+});
+test('Links rápidos navegam para os destinos reais e restauram o topo', async () => {
+  operacionalService.publicConfig = async () => ({ data: {} });
+  operacionalService.publicHours = async () => ({ data: [] });
+  servicoService.listPublic = async () => ({ data: [] });
+  const scrollCalls = [];
+  window.scrollTo = (...args) => scrollCalls.push(args);
+  const LocationProbe = () => {
+    const location = useLocation();
+    return React.createElement(
+      'output',
+      { 'aria-label': 'Destino atual' },
+      `${location.pathname}${location.hash}`,
+    );
+  };
+  const user = userEvent.setup({ document });
+  render(
+    React.createElement(
+      MemoryRouter,
+      { initialEntries: ['/origem'] },
+      React.createElement(
+        AuthContext.Provider,
+        { value: auth },
+        React.createElement(
+          Routes,
+          null,
+          React.createElement(
+            Route,
+            { element: React.createElement(PublicLayout) },
+            React.createElement(Route, {
+              path: '*',
+              element: React.createElement(LocationProbe),
+            }),
+          ),
+        ),
+      ),
+    ),
+  );
+  await waitFor(() => assert.ok(screen.getByRole('contentinfo')));
+  const quickLinks = within(screen.getByRole('heading', { name: 'Links rápidos' }).closest('nav'));
+
+  for (const [name, destination] of [
+    ['Início', '/'],
+    ['Serviços', '/#servicos'],
+    ['Barbeiros', '/#profissionais'],
+    ['Planos', '/planos'],
+    ['Agendar horário', '/agendar'],
+    ['Meus agendamentos', '/meus-agendamentos'],
+    ['Meu plano', '/meu-plano'],
+  ]) {
+    await user.click(quickLinks.getByRole('link', { name }));
+    assert.equal(screen.getByLabelText('Destino atual').textContent, destination);
+  }
+  assert.ok(scrollCalls.length >= 6);
+  assert.deepEqual(scrollCalls.at(-1), [{ top: 0, left: 0, behavior: 'auto' }]);
 });
 test('Header e Footer não têm violações críticas no axe', async () => {
   operacionalService.publicConfig = async () => ({ data: {} });

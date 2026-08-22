@@ -34,3 +34,10 @@ barbeiroAgendamentoRoutes.put(
   validate,
   asyncHandler(controller.updateStatus),
 );
+barbeiroAgendamentoRoutes.put(
+  '/:id/arquivar',
+  appointmentStatusLimiter,
+  appointmentIdValidator,
+  validate,
+  asyncHandler(controller.archive),
+);

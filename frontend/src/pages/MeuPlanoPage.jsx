@@ -19,7 +19,15 @@ import { formatDate, formatMoney } from '../utils/dateTime.js';
 import { apiError } from '../utils/apiError.js';
 import { remainingUsage, subscriptionStatus, usageStatus } from '../utils/planStatus.js';
 
-const safeDate = (date) => (date ? formatDate(date) : 'Data não informada');
+function safeDate(value) {
+  const date = String(value ?? '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return 'Data não informada';
+  const parsed = new Date(`${date}T12:00:00Z`);
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) {
+    return 'Data não informada';
+  }
+  return formatDate(date);
+}
 
 export default function MeuPlanoPage() {
   useDocumentTitle('Meu plano');
@@ -29,9 +37,10 @@ export default function MeuPlanoPage() {
   const [confirming, setConfirming] = useState(false);
   const [motivo, setMotivo] = useState('');
   const [cancelError, setCancelError] = useState('');
+  const [cancelledPlan, setCancelledPlan] = useState(null);
   const cancelar = useCancelarPlano();
 
-  const data = plan.data?.data;
+  const data = cancelledPlan ?? plan.data?.data;
   const usageRows = usos.data ?? [];
   const usages = Array.isArray(usageRows) ? usageRows : (usageRows.data ?? []);
   const remaining = data
@@ -44,11 +53,11 @@ export default function MeuPlanoPage() {
 
   async function confirmCancel() {
     try {
-      await cancelar.cancelar(motivo.trim());
+      const result = await cancelar.cancelar(motivo.trim());
       notify('Plano cancelado.', 'success');
+      setCancelledPlan(result.data);
       setConfirming(false);
       setMotivo('');
-      plan.reload();
       usos.reload();
     } catch (error) {
       setCancelError(apiError(error).message);
@@ -96,7 +105,13 @@ export default function MeuPlanoPage() {
             )}
             {data.status !== 'cancelada' && data.status !== 'vencida' && (
               <div className="cluster">
-                <Button variant="danger" onClick={() => setConfirming(true)}>
+                <Button
+                  variant="danger"
+                  onClick={() => {
+                    setCancelError('');
+                    setConfirming(true);
+                  }}
+                >
                   Cancelar plano
                 </Button>
               </div>
@@ -124,7 +139,7 @@ export default function MeuPlanoPage() {
                       <Badge tone={usageStatus(uso.status).tone}>
                         {usageStatus(uso.status).label}
                       </Badge>
-                      <span>{formatDate(uso.data_utilizacao)}</span>
+                      <span>{safeDate(uso.data_utilizacao)}</span>
                     </div>
                     <p className="muted">Agendamento #${uso.agendamento_id}</p>
                   </Card>
@@ -145,11 +160,11 @@ export default function MeuPlanoPage() {
           motivo={motivo}
           setMotivo={setMotivo}
           loading={cancelar.loading}
+          error={cancelError}
           onClose={() => setConfirming(false)}
           onConfirm={confirmCancel}
         />
       )}
-      {cancelError && <Alert type="error">{cancelError}</Alert>}
     </Container>
   );
 }
@@ -169,32 +184,34 @@ function usageCountLabel(usages) {
   return String(counted);
 }
 
-function CancelPlanDialog({ open, motivo, setMotivo, loading, onClose, onConfirm }) {
+function CancelPlanDialog({ open, motivo, setMotivo, loading, error, onClose, onConfirm }) {
   return (
     <Dialog open={open} onClose={onClose} title="Cancelar plano">
       <div className="stack">
         <p className="muted">O cancelamento é permanente e exige um motivo.</p>
-        <div className="form">
+        <form
+          className="form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            onConfirm();
+          }}
+        >
           <Input
             label="Motivo do cancelamento"
             required
             value={motivo}
             onChange={(e) => setMotivo(e.target.value)}
           />
+          {error && <Alert type="error">{error}</Alert>}
           <div className="cluster">
-            <Button
-              variant="danger"
-              loading={loading}
-              disabled={!motivo.trim()}
-              onClick={onConfirm}
-            >
+            <Button variant="danger" loading={loading} disabled={!motivo.trim()} type="submit">
               Confirmar cancelamento
             </Button>
             <Button variant="secondary" onClick={onClose}>
               Voltar
             </Button>
           </div>
-        </div>
+        </form>
       </div>
     </Dialog>
   );

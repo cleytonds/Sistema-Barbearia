@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Container } from '../components/layout/index.jsx';
 import {
   Alert,
@@ -19,7 +19,12 @@ import { useDisponibilidade } from '../hooks/useDisponibilidade.js';
 import { useDocumentTitle } from '../hooks/useDocumentTitle.js';
 import { barbeiroService } from '../services/barbeiroService.js';
 import { operacionalService } from '../services/operacionalService.js';
+import { planoService } from '../services/planoService.js';
 import { servicoService } from '../services/servicoService.js';
+import {
+  isCoveredByCurrentPlan,
+  PLAN_CANCELLATION_NOTICE,
+} from '../utils/appointmentPlanPolicy.js';
 import { addCivilDays, civilDate, formatDate, formatMoney } from '../utils/dateTime.js';
 
 const steps = ['Serviço', 'Profissional', 'Data', 'Horário', 'Resumo'];
@@ -38,10 +43,13 @@ function ScheduleContent() {
   const { isAuthenticated, usuario } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const requestedServiceApplied = useRef(false);
   const { notify } = useToast();
   const [services, setServices] = useState([]),
     [barbers, setBarbers] = useState([]),
     [configuration, setConfiguration] = useState(null),
+    [subscription, setSubscription] = useState(null),
     [loading, setLoading] = useState(true),
     [error, setError] = useState(null);
   const { criar, loading: creating, error: createError } = useCriarAgendamento();
@@ -60,6 +68,19 @@ function ScheduleContent() {
       active = false;
     };
   }, []);
+  useEffect(() => {
+    if (!isAuthenticated || usuario?.perfil !== 'cliente') return;
+    let active = true;
+    planoService
+      .myPlan()
+      .then((result) => active && setSubscription(result.data))
+      .catch((requestError) => {
+        if (active && requestError?.response?.status !== 404) setError(requestError);
+      });
+    return () => {
+      active = false;
+    };
+  }, [isAuthenticated, usuario?.perfil]);
   useEffect(() => {
     if (!scheduling.servicoId) {
       setBarbers([]);
@@ -110,6 +131,15 @@ function ScheduleContent() {
   const slot = disponibilidade?.horarios?.find(
     (item) => item.inicioLocal === scheduling.horaInicio,
   );
+  const coveredByPlan = isCoveredByCurrentPlan(subscription, scheduling);
+  useEffect(() => {
+    if (loading || requestedServiceApplied.current) return;
+    requestedServiceApplied.current = true;
+    const requestedServiceId = searchParams.get('servicoId');
+    if (services.some((item) => String(item.id) === requestedServiceId)) {
+      scheduling.selecionarServico(requestedServiceId);
+    }
+  }, [loading, scheduling, searchParams, services]);
   useEffect(() => {
     if (!loading && scheduling.servicoId && !service) scheduling.abandonar();
   }, [loading, scheduling.servicoId, service, scheduling]);
@@ -322,6 +352,7 @@ function ScheduleContent() {
             value={scheduling.observacoes}
             onChange={(event) => scheduling.atualizarObservacoes(event.target.value)}
           />
+          {coveredByPlan && <Alert>{PLAN_CANCELLATION_NOTICE}</Alert>}
           {createError && (
             <Alert type="error">
               {createError.code === 'AVAILABILITY_CHANGED'

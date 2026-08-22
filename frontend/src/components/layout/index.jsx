@@ -1,5 +1,5 @@
 import { createElement, useCallback, useEffect, useRef, useState } from 'react';
-import { Link, NavLink, Outlet } from 'react-router-dom';
+import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { BrandMark } from '../brand/BrandMark.jsx';
 import { Button } from '../ui/index.jsx';
 import { useAuth } from '../../hooks/useAuth.js';
@@ -7,19 +7,12 @@ import { useRemoteData } from '../../hooks/useRemoteData.js';
 import { operacionalService } from '../../services/operacionalService.js';
 import { servicoService } from '../../services/servicoService.js';
 import { ClockIcon, InstagramIcon, LocationIcon, MenuIcon, PhoneIcon } from '../ui/Icons.jsx';
+import { ADMIN_PHONE_DISPLAY, ADMIN_PHONE_INTERNATIONAL } from '../../config/adminContact.js';
 
 export function Container({ as: Element = 'div', children, className = '' }) {
   return createElement(Element, { className: `container ${className}`.trim() }, children);
 }
 
-function formatPhone(phone) {
-  const digits = String(phone).replace(/\D/g, '');
-  if (digits.length === 10)
-    return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
-  if (digits.length === 11)
-    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
-  return phone;
-}
 export function SkipLink() {
   return (
     <a className="skip-link" href="#conteudo">
@@ -63,9 +56,14 @@ export function MobileMenu({ isAuthenticated, isClient, onClose, onLogout, open 
             </button>
           </>
         ) : (
-          <Link to="/login" onClick={onClose}>
-            Entrar
-          </Link>
+          <>
+            <Link to="/login" onClick={onClose}>
+              Entrar
+            </Link>
+            <Link to="/cadastro" onClick={onClose}>
+              Criar conta
+            </Link>
+          </>
         )}
       </div>
     </div>
@@ -202,12 +200,10 @@ export function Footer() {
         </nav>
         <section className="footer-section" aria-labelledby="footer-contact-title">
           <h2 id="footer-contact-title">Contato</h2>
-          {configuration?.telefone && (
-            <a className="footer-contact-line" href={`tel:${configuration.telefone}`}>
-              <PhoneIcon />
-              <span>{formatPhone(configuration.telefone)}</span>
-            </a>
-          )}
+          <a className="footer-contact-line" href={`tel:${ADMIN_PHONE_INTERNATIONAL}`}>
+            <PhoneIcon />
+            <span>{ADMIN_PHONE_DISPLAY}</span>
+          </a>
           {configuration?.endereco && (
             <p className="footer-contact-line">
               <LocationIcon />
@@ -246,6 +242,11 @@ export function Footer() {
   );
 }
 export function PublicLayout() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  }, [pathname]);
+
   return (
     <div className="app-shell">
       <SkipLink />

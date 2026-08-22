@@ -17,6 +17,7 @@ import {
   weekEnd,
   weekStart,
 } from '../src/domain/plans/rules.js';
+import { civilDateAt } from '../src/utils/dateTime.js';
 
 // ---------------------------------------------------------------------------
 // Transições de assinatura
@@ -247,6 +248,20 @@ test('isInPeriod verifica pertencimento com extremidades inclusivas', () => {
   assert.equal(isInPeriod({ date: '2026-08-31', inicio: '2026-08-01', fim: '2026-08-31' }), true);
   assert.equal(isInPeriod({ date: '2026-07-31', inicio: '2026-08-01', fim: '2026-08-31' }), false);
   assert.equal(isInPeriod({ date: '2026-09-01', inicio: '2026-08-01', fim: '2026-08-31' }), false);
+});
+
+test('janela de adesão inclui primeiro e último dia e exclui dias externos', () => {
+  const periodo = { inicio: '2026-08-10', fim: '2026-08-11' };
+  assert.equal(isInPeriod({ date: '2026-08-10', ...periodo }), true);
+  assert.equal(isInPeriod({ date: '2026-08-11', ...periodo }), true);
+  assert.equal(isInPeriod({ date: '2026-08-09', ...periodo }), false);
+  assert.equal(isInPeriod({ date: '2026-08-12', ...periodo }), false);
+});
+
+test('instante UTC é convertido para data civil no fuso sem deslocamento indevido', () => {
+  const instante = new Date('2026-08-11T01:30:00.000Z');
+  assert.equal(civilDateAt(instante, 'America/Recife'), '2026-08-10');
+  assert.equal(civilDateAt(instante, 'UTC'), '2026-08-11');
 });
 
 // ---------------------------------------------------------------------------

@@ -7,7 +7,7 @@ export function AppointmentStatusBadge({ status }) {
   const item = appointmentStatus[status] ?? { label: status, tone: 'info' };
   return <Badge tone={item.tone}>{item.label}</Badge>;
 }
-export function AppointmentCard({ appointment, onCancel, onReschedule }) {
+export function AppointmentCard({ appointment, onCancel, onReschedule, onHide }) {
   return (
     <Card>
       <div className="cluster">
@@ -31,6 +31,11 @@ export function AppointmentCard({ appointment, onCancel, onReschedule }) {
         {appointment.podeReagendar && (
           <Button variant="secondary" onClick={() => onReschedule?.(appointment)}>
             Reagendar
+          </Button>
+        )}
+        {onHide && (
+          <Button variant="secondary" onClick={() => onHide(appointment)}>
+            Ocultar do meu histórico
           </Button>
         )}
       </div>

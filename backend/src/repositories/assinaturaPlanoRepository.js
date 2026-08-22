@@ -225,6 +225,16 @@ export async function buscarMeuPlano(clienteId, connection = pool) {
   return rows[0] ?? null;
 }
 
+export async function buscarMeuPlanoForUpdate(clienteId, connection) {
+  const [[row]] = await connection.execute(
+    `${detail} WHERE a.cliente_id = ?
+     AND a.status IN ('aguardando_pagamento', 'ativa', 'suspensa')
+     ORDER BY a.criado_em DESC LIMIT 1 FOR UPDATE`,
+    [clienteId],
+  );
+  return row ?? null;
+}
+
 export async function hasService(id, serviceId, connection = pool) {
   const [[row]] = await connection.execute(
     `SELECT 1 AS ok FROM assinatura_plano_servicos WHERE assinatura_id = ? AND servico_id = ?`,

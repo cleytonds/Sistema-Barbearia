@@ -2,7 +2,7 @@ import { pool } from '../config/database.js';
 import * as barbeiroRepository from '../repositories/barbeiroRepository.js';
 import * as operacionalRepository from '../repositories/operacionalRepository.js';
 import { AppError } from '../utils/AppError.js';
-import { localToUtc } from '../utils/dateTime.js';
+import { isBeforeCurrentLocalMinute, localToUtc } from '../utils/dateTime.js';
 import { DateTime } from 'luxon';
 import { paginationResult, parsePagination } from '../utils/pagination.js';
 
@@ -59,7 +59,7 @@ async function createBlock({
   const endAt = localToUtc(fimLocal, configuration.fuso_horario);
 
   if (endAt <= startAt) throw new AppError('Período inválido.', 422, 'VALIDATION_ERROR');
-  if (startAt < new Date() && !allowPast) {
+  if (isBeforeCurrentLocalMinute(startAt, configuration.fuso_horario) && !allowPast) {
     throw new AppError('Bloqueio no passado não permitido.', 422, 'BUSINESS_RULE_VIOLATION');
   }
 

@@ -50,6 +50,16 @@ test('rejeita dados obrigatórios incompletos', () => {
   assert.equal(hasWhatsAppShareData({ ...appointment, barbeiro: null }), false);
 });
 
+test('permite WhatsApp apenas para agendamentos ativos', () => {
+  for (const status of ['pendente', 'confirmado', 'em_atendimento']) {
+    assert.equal(hasWhatsAppShareData({ ...appointment, status }), true);
+  }
+  for (const status of ['concluido', 'cancelado', 'ausente']) {
+    assert.equal(hasWhatsAppShareData({ ...appointment, status }), false);
+    assert.equal(buildWhatsAppShareUrl({ ...appointment, status }), null);
+  }
+});
+
 test('botão abre nova aba com proteção de opener, funciona por teclado e não confirma envio', async () => {
   const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
     url: 'http://localhost/',
@@ -136,5 +146,149 @@ test('páginas do cliente exibem o componente somente após os dados carregarem'
     assert.match(source, /<WhatsAppShareButton agendamento=\{data\} \/>/);
     assert.ok(source.indexOf('<WhatsAppShareButton') > source.indexOf('loading ?'));
     assert.match(source, /hasWhatsAppShareData\(data\)/);
+  }
+});
+
+test('sucesso mobile mostra WhatsApp no topo do card e erro da API não mostra', async () => {
+  const React = await import('react');
+  const { render, cleanup, screen, waitFor } = await import('@testing-library/react');
+  const { MemoryRouter, Route, Routes } = await import('react-router-dom');
+  const { ToastProvider } = await import('../src/contexts/ToastContext.jsx');
+  const { api } = await import('../src/api/client.js');
+  const ScheduleSuccessPage = (await import('../src/pages/ScheduleSuccessPage.jsx')).default;
+  const originalAdapter = api.defaults.adapter;
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: 375 });
+
+  const renderPage = () =>
+    render(
+      React.createElement(
+        ToastProvider,
+        null,
+        React.createElement(
+          MemoryRouter,
+          { initialEntries: ['/agendamento/sucesso/123'] },
+          React.createElement(
+            Routes,
+            null,
+            React.createElement(Route, {
+              path: '/agendamento/sucesso/:id',
+              element: React.createElement(ScheduleSuccessPage),
+            }),
+          ),
+        ),
+      ),
+    );
+
+  try {
+    api.defaults.adapter = async (config) => ({
+      data:
+        config.url === '/agendamentos/123'
+          ? {
+              data: {
+                ...appointment,
+                id: '123',
+                horaFim: '10:00',
+                preco: '40.00',
+              },
+            }
+          : { data: { nomeBarbearia: 'Elite Barbearia 081' } },
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+      config,
+    });
+    renderPage();
+    const button = await screen.findByRole('button', { name: /Enviar pelo WhatsApp/ });
+    const share = button.closest('.schedule-success__share');
+    assert.ok(share);
+    assert.ok(
+      share.compareDocumentPosition(screen.getByRole('heading', { name: 'Corte e barba' })) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    cleanup();
+
+    api.defaults.adapter = async () => {
+      throw new Error('Falha simulada');
+    };
+    renderPage();
+    await waitFor(() => assert.ok(screen.getByRole('alert')));
+    assert.equal(screen.queryByRole('button', { name: /Enviar pelo WhatsApp/ }), null);
+  } finally {
+    cleanup();
+    api.defaults.adapter = originalAdapter;
+  }
+});
+
+test('histórico oferece ocultação somente visual sem operação de exclusão', async () => {
+  const historyPage = await readFile(
+    new URL('../src/pages/MyAppointmentsPage.jsx', import.meta.url),
+    'utf8',
+  );
+  const card = await readFile(
+    new URL('../src/components/appointments/index.jsx', import.meta.url),
+    'utf8',
+  );
+  assert.match(historyPage, /period === 'historico'/);
+  assert.match(historyPage, /setHiddenHistoryIds/);
+  assert.match(card, /Ocultar do meu histórico/);
+  assert.doesNotMatch(historyPage, /delete|remove|\.destroy\(/i);
+});
+
+test('histórico continua renderizando e oculta o cartão apenas na tela', async () => {
+  const React = await import('react');
+  const { render, cleanup, fireEvent, screen, waitFor } = await import('@testing-library/react');
+  const { MemoryRouter } = await import('react-router-dom');
+  const { ToastProvider } = await import('../src/contexts/ToastContext.jsx');
+  const { api } = await import('../src/api/client.js');
+  const MyAppointmentsPage = (await import('../src/pages/MyAppointmentsPage.jsx')).default;
+  const originalAdapter = api.defaults.adapter;
+  const calls = [];
+  api.defaults.adapter = async (config) => {
+    calls.push(`${config.method} ${config.url}`);
+    const historical = config.params?.periodo === 'historico';
+    return {
+      data: {
+        data: historical
+          ? [
+              {
+                id: '55',
+                status: 'cancelado',
+                data: '2026-08-10',
+                horaInicio: '09:00',
+                horaFim: '09:30',
+                preco: '40.00',
+                servico: { nome: 'Corte do histórico' },
+                barbeiro: { nome: 'Profissional' },
+                podeCancelar: false,
+                podeReagendar: false,
+              },
+            ]
+          : [],
+        pagination: { page: 1, totalPages: 1 },
+      },
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+      config,
+    };
+  };
+
+  try {
+    render(
+      React.createElement(
+        ToastProvider,
+        null,
+        React.createElement(MemoryRouter, null, React.createElement(MyAppointmentsPage)),
+      ),
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Histórico' }));
+    await waitFor(() => assert.ok(screen.getByText('Corte do histórico')));
+    fireEvent.click(screen.getByRole('button', { name: 'Ocultar do meu histórico' }));
+    await waitFor(() => assert.equal(screen.queryByText('Corte do histórico'), null));
+    assert.ok(screen.getByText('Nenhum agendamento no histórico'));
+    assert.deepEqual([...new Set(calls)], ['get /agendamentos/meus']);
+  } finally {
+    cleanup();
+    api.defaults.adapter = originalAdapter;
   }
 });

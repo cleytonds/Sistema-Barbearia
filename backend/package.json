@@ -8,6 +8,7 @@
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
     "test": "node --test --test-concurrency=1",
+    "test:integration": "node --env-file=.env.test --test --test-concurrency=1 test/auth-cookie.integration.test.js test/appointments.integration.test.js test/auth.integration.test.js test/availability.integration.test.js test/commissions-http.test.js test/phase4.integration.test.js test/phase4-extended.integration.test.js test/phase8.integration.test.js test/phase9.integration.test.js test/plans-appointments.integration.test.js test/plans-http.test.js test/plans-repositories.test.js test/plans-services.test.js",
     "migrate": "node src/database/migrate.js up",
     "migrate:status": "node src/database/migrate.js status",
     "seed": "node src/database/seeds/run.js",

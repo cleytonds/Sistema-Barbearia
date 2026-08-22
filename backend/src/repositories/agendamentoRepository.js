@@ -2,7 +2,11 @@ import { pool } from '../config/database.js';
 
 const detailSelect = `
   SELECT a.*, ub.nome AS barbeiro_nome, uc.nome AS cliente_nome,
-         s.nome AS servico_nome, c.fuso_horario
+         s.nome AS servico_nome, c.fuso_horario,
+         EXISTS(
+           SELECT 1 FROM agendamentos_arquivados_barbeiro aa
+           WHERE aa.agendamento_id = a.id AND aa.barbeiro_id = a.barbeiro_id
+         ) AS arquivado_barbeiro
   FROM agendamentos a
   INNER JOIN barbeiros b ON b.id = a.barbeiro_id
   INNER JOIN usuarios ub ON ub.id = b.usuario_id
@@ -21,10 +25,26 @@ export async function findByIdWithoutLock(id, connection = pool) {
   return row ?? null;
 }
 
+export async function findClientAppointmentById(id, clientId, connection = pool) {
+  const [[row]] = await connection.execute(
+    'SELECT * FROM agendamentos WHERE id = ? AND cliente_id = ? LIMIT 1',
+    [id, clientId],
+  );
+  return row ?? null;
+}
+
 export async function findByIdForUpdate(id, connection) {
   const [[row]] = await connection.execute(
     'SELECT * FROM agendamentos WHERE id = ? LIMIT 1 FOR UPDATE',
     [id],
+  );
+  return row ?? null;
+}
+
+export async function findClientAppointmentByIdForUpdate(id, clientId, connection) {
+  const [[row]] = await connection.execute(
+    'SELECT * FROM agendamentos WHERE id = ? AND cliente_id = ? LIMIT 1 FOR UPDATE',
+    [id, clientId],
   );
   return row ?? null;
 }
@@ -139,6 +159,17 @@ function filtersSql(filters, parameters) {
   add('a.origem = ?', filters.origin);
   add('a.inicio_em >= ?', filters.startAt);
   add('a.inicio_em < ?', filters.endAt);
+  if (filters.archived === true) {
+    clauses.push(`EXISTS (
+      SELECT 1 FROM agendamentos_arquivados_barbeiro aa
+      WHERE aa.agendamento_id = a.id AND aa.barbeiro_id = a.barbeiro_id
+    )`);
+  } else if (filters.archived === false) {
+    clauses.push(`NOT EXISTS (
+      SELECT 1 FROM agendamentos_arquivados_barbeiro aa
+      WHERE aa.agendamento_id = a.id AND aa.barbeiro_id = a.barbeiro_id
+    )`);
+  }
   if (filters.period === 'inicio') {
     clauses.push("a.inicio_em >= ? AND a.status IN ('pendente','confirmado','em_atendimento')");
     parameters.push(filters.nowAt);
@@ -183,6 +214,28 @@ export async function findSettings(connection = pool) {
   const [[row]] = await connection.execute(
     `SELECT fuso_horario, tempo_minimo_cancelamento_horas
      FROM configuracoes WHERE id=1`,
+  );
+  return row ?? null;
+}
+
+export async function findBarberStartBlockerForUpdate(
+  { id, barberId, startAt, dayStartAt, dayEndAt },
+  connection,
+) {
+  const [[row]] = await connection.execute(
+    `SELECT id, status, inicio_em FROM agendamentos
+     WHERE barbeiro_id = ? AND id <> ?
+       AND inicio_em >= ? AND inicio_em < ?
+       AND (
+         status = 'em_atendimento'
+         OR (
+           status IN ('pendente', 'confirmado')
+           AND (inicio_em < ? OR (inicio_em = ? AND id < ?))
+         )
+       )
+     ORDER BY inicio_em, id
+     LIMIT 1 FOR UPDATE`,
+    [barberId, id, dayStartAt, dayEndAt, startAt, startAt, id],
   );
   return row ?? null;
 }

@@ -2,8 +2,10 @@ import { runTransactionWithRetry } from '../database/transactionRetry.js';
 import {
   assertAdminCancellation,
   assertClientCancellation,
+  isLateCancellation,
 } from '../domain/appointments/cancellationRules.js';
 import { assertClientOwner } from '../domain/appointments/permissions.js';
+import { PLAN_CANCELLATION_RELEASE_HOURS } from '../domain/plans/constants.js';
 import * as appointmentRepository from '../repositories/agendamentoRepository.js';
 import * as availabilityRepository from '../repositories/disponibilidadeRepository.js';
 import * as historyRepository from '../repositories/historicoAgendamentoRepository.js';
@@ -20,11 +22,15 @@ export async function cancel({
   nowUtc = new Date(),
   requestId,
 }) {
-  if (!reason?.trim()) throw new AppError('Motivo obrigatÃ³rio.', 422, 'VALIDATION_ERROR');
+  if (role !== 'cliente' && !reason?.trim())
+    throw new AppError('Motivo obrigatÃ³rio.', 422, 'VALIDATION_ERROR');
   const cancellationResponsibility = role === 'cliente' ? 'cliente' : responsibility;
   if (!['cliente', 'barbearia'].includes(cancellationResponsibility))
     throw new AppError('Responsabilidade invÃ¡lida.', 422, 'VALIDATION_ERROR');
-  const preliminary = await appointmentRepository.findByIdWithoutLock(id);
+  const preliminary =
+    role === 'cliente'
+      ? await appointmentRepository.findClientAppointmentById(id, userId)
+      : await appointmentRepository.findByIdWithoutLock(id);
   if (!preliminary) throw new AppError('Agendamento não encontrado.', 404, 'APPOINTMENT_NOT_FOUND');
   const logContext = {
     requestId,
@@ -37,7 +43,10 @@ export async function cancel({
     logContext,
     operation: async ({ connection, transactionContext }) => {
       await availabilityRepository.lockBarber(preliminary.barbeiro_id, connection);
-      const appointment = await appointmentRepository.findByIdForUpdate(id, connection);
+      const appointment =
+        role === 'cliente'
+          ? await appointmentRepository.findClientAppointmentByIdForUpdate(id, userId, connection)
+          : await appointmentRepository.findByIdForUpdate(id, connection);
       if (!appointment || String(appointment.barbeiro_id) !== String(preliminary.barbeiro_id)) {
         throw new AppError('Agendamento não encontrado.', 404, 'APPOINTMENT_NOT_FOUND');
       }
@@ -59,10 +68,14 @@ export async function cancel({
         { id, userId, reason: reason?.trim(), nowUtc },
         connection,
       );
-      const deadline =
-        new Date(appointment.inicio_em).getTime() -
-        settings.tempo_minimo_cancelamento_horas * 3_600_000;
-      const late = new Date(nowUtc).getTime() > deadline;
+      const late = isLateCancellation({
+        startAt: appointment.inicio_em,
+        minimumHours:
+          appointment.tipo_cobranca === 'plano'
+            ? PLAN_CANCELLATION_RELEASE_HOURS
+            : settings.tempo_minimo_cancelamento_horas,
+        nowUtc,
+      });
       let usageEffect = 'liberado';
       if (cancellationResponsibility === 'cliente' && late) {
         usageEffect = 'consumido';

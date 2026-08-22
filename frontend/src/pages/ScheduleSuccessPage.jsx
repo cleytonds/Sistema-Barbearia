@@ -13,7 +13,7 @@ export default function ScheduleSuccessPage() {
   const { id } = useParams();
   const { data, loading, error } = useAppointmentDetails(id);
   return (
-    <Container as="section" className="page stack">
+    <Container as="section" className="page stack schedule-success">
       <div>
         <BrandMark linked={false} variant="success" />
         <p className="eyebrow">Agendamento recebido</p>
@@ -24,8 +24,14 @@ export default function ScheduleSuccessPage() {
       ) : error ? (
         <Alert type="error">Não foi possível carregar o agendamento.</Alert>
       ) : (
-        <Card>
+        <Card className="stack">
           <AppointmentStatusBadge status={data.status} />
+          {hasWhatsAppShareData(data) && (
+            <div className="schedule-success__share stack">
+              <p>Compartilhe os dados do seu horário pelo WhatsApp.</p>
+              <WhatsAppShareButton agendamento={data} />
+            </div>
+          )}
           <h2>{data.servico.nome}</h2>
           <p>ID: {data.id}</p>
           <p>{data.barbeiro.nome}</p>
@@ -33,12 +39,6 @@ export default function ScheduleSuccessPage() {
             {formatDate(data.data)} · {data.horaInicio}–{data.horaFim}
           </p>
           <p>{formatMoney(data.preco)}</p>
-          {hasWhatsAppShareData(data) && (
-            <>
-              <p>Compartilhe os dados do seu horário pelo WhatsApp.</p>
-              <WhatsAppShareButton agendamento={data} />
-            </>
-          )}
         </Card>
       )}
       <div className="cluster">

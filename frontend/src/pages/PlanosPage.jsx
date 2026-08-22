@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Container } from '../components/layout/index.jsx';
 import {
   Alert,
@@ -17,6 +16,7 @@ import { useToast } from '../contexts/ToastContext.jsx';
 import { planoService } from '../services/planoService.js';
 import { formatDate, formatMoney } from '../utils/dateTime.js';
 import { apiError } from '../utils/apiError.js';
+import { buildPlanWhatsAppUrl } from '../utils/planWhatsApp.js';
 
 function PlanLimit({ label, value }) {
   return (
@@ -71,7 +71,6 @@ function safeDate(value) {
 
 export default function PlanosPage() {
   useDocumentTitle('Planos');
-  const navigate = useNavigate();
   const { notify } = useToast();
   const state = useRemoteData(() => planoService.listPublic({ sort: 'preco', order: 'asc' }), []);
   const [selected, setSelected] = useState(null);
@@ -98,15 +97,20 @@ export default function PlanosPage() {
 
   async function confirmSign() {
     try {
-      const result = await assinar.assinar(selected.id, {});
+      const result = await assinar.assinar(selected.id, {
+        inicioEm: String(selected.utilizacaoInicio).slice(0, 10),
+        fimEm: String(selected.utilizacaoFim).slice(0, 10),
+      });
+      if (result?.data?.status !== 'aguardando_pagamento') {
+        throw new Error('A solicitação não retornou o status de pagamento esperado.');
+      }
+      const whatsappUrl = buildPlanWhatsAppUrl(selected);
+      window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
       notify(
-        result?.data?.status === 'aguardando_pagamento'
-          ? 'Assinatura solicitada com sucesso.'
-          : 'Plano assinado.',
+        'Assinatura solicitada. Combine o pagamento com a barbearia pelo WhatsApp.',
         'success',
       );
       setSelected(null);
-      navigate('/meu-plano', { replace: true });
     } catch {
       // Tratamento de erro permanece no dialog; sem navegação.
     }

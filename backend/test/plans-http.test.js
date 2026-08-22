@@ -37,7 +37,12 @@ async function api(path, { method = 'GET', token, body, key } = {}) {
   return fetch(`${base}${path}`, {
     method,
     headers: {
-      ...(token && { authorization: `Bearer ${token}` }),
+      ...(token && { cookie: `barbearia_session=${token}` }),
+      ...(token &&
+        ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) && {
+          origin: 'http://localhost:5173',
+          'x-csrf-protection': '1',
+        }),
       ...(body && { 'content-type': 'application/json' }),
       ...(key && { 'Idempotency-Key': key }),
     },
@@ -392,6 +397,10 @@ test('admin: altera status da assinatura', async () => {
     },
   );
   assert.equal(payment.status, 200);
+  let subscriptionDetail = await api(`/admin/assinaturas-planos/${assinatura.id}`, {
+    token: adminToken,
+  });
+  assert.equal((await subscriptionDetail.json()).data.status, 'ativa');
 
   const suspend = await api(`/admin/assinaturas-planos/${assinatura.id}/suspender`, {
     method: 'PUT',
@@ -399,12 +408,14 @@ test('admin: altera status da assinatura', async () => {
     body: { motivo: 'Pausa administrativa' },
   });
   assert.equal(suspend.status, 200);
+  assert.equal((await suspend.json()).data.status, 'suspensa');
   const reactivate = await api(`/admin/assinaturas-planos/${assinatura.id}/reativar`, {
     method: 'PUT',
     token: adminToken,
     body: { motivo: 'Retomada administrativa' },
   });
   assert.equal(reactivate.status, 200);
+  assert.equal((await reactivate.json()).data.status, 'ativa');
 
   const cancel = await api(`/admin/assinaturas-planos/${assinatura.id}/cancelar`, {
     method: 'PUT',
@@ -413,15 +424,23 @@ test('admin: altera status da assinatura', async () => {
   });
   assert.equal(cancel.status, 200);
   assert.equal((await cancel.json()).data.status, 'cancelada');
+  const invalidReactivate = await api(`/admin/assinaturas-planos/${assinatura.id}/reativar`, {
+    method: 'PUT',
+    token: adminToken,
+    body: { motivo: 'Reabertura indevida' },
+  });
+  assert.equal(invalidReactivate.status, 409);
 
-  const detail = await api(`/admin/assinaturas-planos/${assinatura.id}`, { token: adminToken });
+  subscriptionDetail = await api(`/admin/assinaturas-planos/${assinatura.id}`, {
+    token: adminToken,
+  });
   const usages = await api(`/admin/assinaturas-planos/${assinatura.id}/usos`, {
     token: adminToken,
   });
   const history = await api(`/admin/assinaturas-planos/${assinatura.id}/historico`, {
     token: adminToken,
   });
-  assert.equal(detail.status, 200);
+  assert.equal(subscriptionDetail.status, 200);
   assert.equal(usages.status, 200);
   assert.equal(history.status, 200);
   assert.ok((await history.json()).data.length > 0);
@@ -470,6 +489,68 @@ test('cliente: assina plano com idempotência e my-plan/usos', async () => {
   assert.ok(Array.isArray((await usos.json()).data));
 });
 
+test('cliente cancela assinatura suspensa uma vez e preserva histórico', async () => {
+  const [[subscription]] = await pool.execute(
+    `SELECT id FROM assinaturas_planos
+     WHERE cliente_id=? AND status='aguardando_pagamento' ORDER BY criado_em DESC LIMIT 1`,
+    [otherClientId],
+  );
+  await pool.execute(
+    `UPDATE assinaturas_planos SET status='suspensa', ativada_em=NOW(6),
+     suspensa_em=NOW(6), motivo_status='Pausa de teste' WHERE id=?`,
+    [subscription.id],
+  );
+
+  const response = await api('/meu-plano/cancelar', {
+    method: 'POST',
+    token: otherClientToken,
+    body: { motivo: 'Cancelamento solicitado pelo cliente' },
+  });
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).data.status, 'cancelada');
+
+  const replay = await api('/meu-plano/cancelar', {
+    method: 'POST',
+    token: otherClientToken,
+    body: { motivo: 'Nova tentativa' },
+  });
+  assert.equal(replay.status, 404);
+  const [[history]] = await pool.execute(
+    `SELECT COUNT(*) total FROM historico_planos
+     WHERE assinatura_id=? AND tipo_evento='assinatura_cancelada'`,
+    [subscription.id],
+  );
+  assert.equal(Number(history.total), 1);
+
+  const activeCreation = await api(`/planos/${planId}/solicitacoes`, {
+    method: 'POST',
+    token: otherClientToken,
+    body: signPayload(),
+    key: randomUUID(),
+  });
+  assert.equal(activeCreation.status, 201);
+  const activeId = (await activeCreation.json()).data.id;
+  await pool.execute(
+    `UPDATE assinaturas_planos SET status='ativa', ativada_em=NOW(6),
+     suspensa_em=NULL, cancelada_em=NULL, motivo_status=NULL WHERE id=?`,
+    [activeId],
+  );
+  const activeCancel = await api('/meu-plano/cancelar', {
+    method: 'POST',
+    token: otherClientToken,
+    body: { motivo: 'Cancelamento da assinatura ativa' },
+  });
+  assert.equal(activeCancel.status, 200);
+  assert.equal((await activeCancel.json()).data.status, 'cancelada');
+
+  const missingReason = await api('/meu-plano/cancelar', {
+    method: 'POST',
+    token: clientToken,
+    body: { motivo: '' },
+  });
+  assert.equal(missingReason.status, 422);
+});
+
 test('cliente: assinatura sem Idempotency-Key é rejeitada', async () => {
   const noAuth = await api(`/planos/${planId}/solicitacoes`, {
     method: 'POST',
@@ -500,4 +581,16 @@ test('cliente: não acessa admin e admin não acessa meu-plano', async () => {
   assert.equal(adminAsClient.status, 403);
   const clientAsAdmin = await api('/admin/planos', { token: clientToken });
   assert.equal(clientAsAdmin.status, 403);
+  const clientStatus = await api(`/admin/assinaturas-planos/${adminSubscriptionId}/suspender`, {
+    method: 'PUT',
+    token: clientToken,
+    body: { motivo: 'Tentativa indevida' },
+  });
+  assert.equal(clientStatus.status, 403);
+  const barberStatus = await api(`/admin/assinaturas-planos/${adminSubscriptionId}/cancelar`, {
+    method: 'PUT',
+    token: barberToken,
+    body: { motivo: 'Tentativa indevida' },
+  });
+  assert.equal(barberStatus.status, 403);
 });

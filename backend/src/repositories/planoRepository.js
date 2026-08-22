@@ -176,9 +176,14 @@ export async function atualizarUso(id, { status, motivo, actorId, now }, connect
   );
 }
 
-export async function listarServicosDoPlano(planoId, connection = pool) {
+export async function listarServicosDoPlano(
+  planoId,
+  { includeCommissionBase = false, connection = pool } = {},
+) {
   const [rows] = await connection.execute(
-    `SELECT ps.servico_id AS id, s.nome
+    `SELECT ps.servico_id AS id, s.nome${
+      includeCommissionBase ? ', CAST(ps.valor_base_comissao AS CHAR) AS valorBaseComissao' : ''
+    }
      FROM plano_servicos ps JOIN servicos s ON s.id = ps.servico_id
      WHERE ps.plano_id = ? ORDER BY s.nome`,
     [planoId],

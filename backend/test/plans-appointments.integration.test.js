@@ -16,11 +16,13 @@ const statusService = await import('../src/services/agendamentoStatusService.js'
 const planService = await import('../src/services/planoService.js');
 const subscriptionService = await import('../src/services/assinaturaPlanoService.js');
 const paymentService = await import('../src/services/pagamentoPlanoService.js');
+const commissionService = await import('../src/services/comissaoService.js');
 const { adminCancelValidator } = await import('../src/validators/adminAgendamentoValidators.js');
 const { cancelAppointmentValidator } = await import('../src/validators/agendamentoValidators.js');
 
 const marker = `PAI-${randomUUID().slice(0, 8)}`;
 const zone = 'America/Recife';
+const today = DateTime.now().setZone(zone).toFormat('yyyy-MM-dd');
 const baseDate = DateTime.now().setZone(zone).plus({ days: 7 });
 const dates = [0, 7, 14, 21, 28].map((days) => baseDate.plus({ days }).toFormat('yyyy-MM-dd'));
 const day = baseDate.weekday % 7;
@@ -153,7 +155,7 @@ test.before(async () => {
       nome: `${marker} Plano`,
       descricao: 'Integração com agenda',
       preco: '100.00',
-      adesaoInicio: dates[0],
+      adesaoInicio: today,
       adesaoFim: dates[4],
       utilizacaoInicio: dates[0],
       utilizacaoFim: dates[4],
@@ -166,6 +168,15 @@ test.before(async () => {
     },
     actorId: adminId,
   });
+  await commissionService.configurarComissao({
+    barbeiroId: barberId,
+    percentualAvulso: '50.00',
+    percentualPlano: '40.00',
+  });
+  await pool.execute(
+    'UPDATE plano_servicos SET valor_base_comissao=30.00 WHERE plano_id=? AND servico_id=?',
+    [planId, serviceId],
+  );
   subscriptionId = await createSubscription(clientId);
   await createSubscription(pendingClientId, false);
 });
@@ -175,6 +186,11 @@ test.after(async () => {
     `DELETE FROM historico_planos WHERE plano_id=? OR assinatura_id IN
      (SELECT id FROM assinaturas_planos WHERE plano_id=?)`,
     [planId, planId],
+  );
+  await pool.execute(
+    `DELETE c FROM comissoes c JOIN agendamentos a ON a.id=c.agendamento_id
+     WHERE a.cliente_id IN (?,?)`,
+    [clientId, pendingClientId],
   );
   await pool.execute(
     `DELETE FROM usos_planos WHERE assinatura_id IN
@@ -213,6 +229,10 @@ test.after(async () => {
     secondBarberId,
   ]);
   await pool.execute('DELETE FROM barbeiro_servicos WHERE barbeiro_id IN (?,?)', [
+    barberId,
+    secondBarberId,
+  ]);
+  await pool.execute('DELETE FROM configuracoes_comissao_barbeiros WHERE barbeiro_id IN (?,?)', [
     barberId,
     secondBarberId,
   ]);
@@ -306,6 +326,107 @@ test('conclusão e ausência consomem uso de forma idempotente', async () => {
   assert.deepEqual(
     rows.map((row) => row.status),
     ['consumido', 'consumido'],
+  );
+  const [commissions] = await pool.execute(
+    `SELECT agendamento_id,tipo_cobranca,CAST(valor_base_snapshot AS CHAR) valor_base,
+            CAST(percentual_snapshot AS CHAR) percentual,
+            CAST(valor_comissao AS CHAR) valor_comissao
+     FROM comissoes WHERE agendamento_id IN (?,?)`,
+    [completed.appointment.id, absent.appointment.id],
+  );
+  assert.equal(commissions.length, 1);
+  assert.equal(String(commissions[0].agendamento_id), String(completed.appointment.id));
+  assert.deepEqual(
+    [
+      commissions[0].tipo_cobranca,
+      commissions[0].valor_base,
+      commissions[0].percentual,
+      commissions[0].valor_comissao,
+    ],
+    ['plano', '30.00', '40.00', '12.00'],
+  );
+});
+
+test('comissão avulsa usa preço snapshot e alteração posterior não muda histórico', async () => {
+  const appointment = await booking(clientId, barberId, secondServiceId, dates[1], '11:00');
+  assert.equal(appointment.appointment.tipoCobranca, 'avulso');
+  const start = DateTime.fromISO(`${dates[1]}T11:00:00`, { zone }).toUTC();
+  for (const status of ['confirmado', 'em_atendimento', 'concluido'])
+    await statusService.updateStatus({
+      id: appointment.appointment.id,
+      userId: adminId,
+      role: 'admin',
+      nextStatus: status,
+      nowUtc: start.plus({ minutes: 40 }).toJSDate(),
+    });
+  await commissionService.configurarComissao({
+    barbeiroId: barberId,
+    percentualAvulso: '60.00',
+    percentualPlano: '45.00',
+  });
+  await pool.execute('UPDATE servicos SET preco=70.00 WHERE id=?', [secondServiceId]);
+  const [[commission]] = await pool.execute(
+    `SELECT tipo_cobranca,CAST(valor_base_snapshot AS CHAR) valor_base,
+            CAST(percentual_snapshot AS CHAR) percentual,
+            CAST(valor_comissao AS CHAR) valor_comissao
+     FROM comissoes WHERE agendamento_id=?`,
+    [appointment.appointment.id],
+  );
+  assert.deepEqual(
+    [
+      commission.tipo_cobranca,
+      commission.valor_base,
+      commission.percentual,
+      commission.valor_comissao,
+    ],
+    ['avulso', '50.00', '50.00', '25.00'],
+  );
+  await pool.execute('UPDATE servicos SET preco=50.00 WHERE id=?', [secondServiceId]);
+  await commissionService.configurarComissao({
+    barbeiroId: barberId,
+    percentualAvulso: '50.00',
+    percentualPlano: '40.00',
+  });
+});
+
+test('valor-base ausente no plano reverte conclusão e não inventa comissão', async () => {
+  const appointment = await booking(clientId, barberId, serviceId, dates[1], '12:00');
+  const start = DateTime.fromISO(`${dates[1]}T12:00:00`, { zone }).toUTC();
+  for (const status of ['confirmado', 'em_atendimento'])
+    await statusService.updateStatus({
+      id: appointment.appointment.id,
+      userId: adminId,
+      role: 'admin',
+      nextStatus: status,
+      nowUtc: start.plus({ minutes: 40 }).toJSDate(),
+    });
+  await pool.execute(
+    'UPDATE plano_servicos SET valor_base_comissao=NULL WHERE plano_id=? AND servico_id=?',
+    [planId, serviceId],
+  );
+  await assert.rejects(
+    () =>
+      statusService.updateStatus({
+        id: appointment.appointment.id,
+        userId: adminId,
+        role: 'admin',
+        nextStatus: 'concluido',
+        nowUtc: start.plus({ minutes: 45 }).toJSDate(),
+      }),
+    { code: 'PLAN_COMMISSION_BASE_MISSING' },
+  );
+  const [[stored]] = await pool.execute('SELECT status FROM agendamentos WHERE id=?', [
+    appointment.appointment.id,
+  ]);
+  const [[commission]] = await pool.execute(
+    'SELECT COUNT(*) total FROM comissoes WHERE agendamento_id=?',
+    [appointment.appointment.id],
+  );
+  assert.equal(stored.status, 'em_atendimento');
+  assert.equal(Number(commission.total), 0);
+  await pool.execute(
+    'UPDATE plano_servicos SET valor_base_comissao=30.00 WHERE plano_id=? AND servico_id=?',
+    [planId, serviceId],
   );
 });
 
@@ -493,7 +614,6 @@ test('cancelamento distingue cliente e barbearia com idempotência e rollback', 
     ).isEmpty(),
     false,
   );
-
   const single = await booking(pendingClientId, barberId, serviceId, dates[2], '16:00');
   await cancellationService.cancel({
     id: single.appointment.id,

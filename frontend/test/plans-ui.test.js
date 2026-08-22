@@ -55,7 +55,7 @@ test('planoService expõe as rotas públicas e admin esperadas', async () => {
     if (config.url === '/meu-plano/usos') return response(config, { data: [] });
     if (config.url === '/meu-plano/cancelar') return response(config, { ok: true });
     if (config.url === '/admin/planos') return response(config, { data: [] });
-    if (config.url === '/admin/assinaturas') return response(config, { data: [] });
+    if (config.url === '/admin/assinaturas-planos') return response(config, { data: [] });
     return response(config, { data: [{ id: 1 }] });
   };
 
@@ -66,6 +66,15 @@ test('planoService expõe as rotas públicas e admin esperadas', async () => {
   await planoService.cancelOwn('motivo');
   await adminPlanoService.listPlanos({});
   await adminPlanoService.listAssinaturas({});
+  await adminPlanoService.createAssinatura({ clienteId: 1 });
+  await adminPlanoService.confirmAssinaturaPayment(8, {
+    referencia: '2026-08-01',
+    valor: '99.90',
+    forma: 'presencial',
+  });
+  await adminPlanoService.updateAssinaturaStatus(8, 'suspender', 'Pausa');
+  await adminPlanoService.updateAssinaturaStatus(8, 'reativar', 'Retomada');
+  await adminPlanoService.updateAssinaturaStatus(8, 'cancelar', 'Cancelamento');
 
   assert.ok(calls.includes('GET /planos'));
   assert.ok(calls.includes('GET /planos/7'));
@@ -73,7 +82,12 @@ test('planoService expõe as rotas públicas e admin esperadas', async () => {
   assert.ok(calls.includes('GET /meu-plano/usos'));
   assert.ok(calls.includes('POST /meu-plano/cancelar'));
   assert.ok(calls.includes('GET /admin/planos'));
-  assert.ok(calls.includes('GET /admin/assinaturas'));
+  assert.ok(calls.includes('GET /admin/assinaturas-planos'));
+  assert.ok(calls.includes('POST /admin/assinaturas-planos'));
+  assert.ok(calls.includes('PUT /admin/assinaturas-planos/8/confirmar-pagamento'));
+  assert.ok(calls.includes('PUT /admin/assinaturas-planos/8/suspender'));
+  assert.ok(calls.includes('PUT /admin/assinaturas-planos/8/reativar'));
+  assert.ok(calls.includes('PUT /admin/assinaturas-planos/8/cancelar'));
 });
 
 test('planoService.assinar envia Idempotency-Key e trata replay', async () => {
@@ -86,10 +100,72 @@ test('planoService.assinar envia Idempotency-Key e trata replay', async () => {
       { 'idempotent-replayed': 'true' },
     );
   };
-  const result = await planoService.sign(3, { clienteId: 1 }, 'mine-key');
-  assert.equal(config.url, '/planos/3/assinar');
+  const payload = { inicioEm: '2026-08-01', fimEm: '2026-08-31' };
+  const result = await planoService.sign(3, payload, 'mine-key');
+  assert.equal(config.url, '/planos/3/solicitacoes');
+  assert.deepEqual(JSON.parse(config.data), payload);
   assert.equal(config.headers['Idempotency-Key'], 'mine-key');
   assert.equal(result.status, 'aguardando_pagamento');
+});
+
+test('adminPlanoService usa rotas oficiais e payloads de assinatura', async () => {
+  const received = [];
+  api.defaults.adapter = async (config) => {
+    received.push({
+      method: config.method,
+      url: config.url,
+      data: JSON.parse(config.data ?? '{}'),
+    });
+    return response(config, { data: { status: 'ativa' } });
+  };
+  await adminPlanoService.confirmAssinaturaPayment('307', {
+    referencia: '2026-08',
+    valor: '90',
+    observacao: ' pix ',
+  });
+  await adminPlanoService.updateAssinaturaStatus('307', 'suspender', 'Pausa administrativa');
+  assert.deepEqual(received, [
+    {
+      method: 'put',
+      url: '/admin/assinaturas-planos/307/confirmar-pagamento',
+      data: {
+        referencia: '2026-08-01',
+        valor: '90.00',
+        forma: 'presencial',
+        observacao: 'pix',
+      },
+    },
+    {
+      method: 'put',
+      url: '/admin/assinaturas-planos/307/suspender',
+      data: { motivo: 'Pausa administrativa' },
+    },
+  ]);
+});
+
+test('confirmação administrativa rejeita referência e valor inválidos antes da API', async () => {
+  let calls = 0;
+  api.defaults.adapter = async (config) => {
+    calls += 1;
+    return response(config, {});
+  };
+  await assert.rejects(
+    () =>
+      adminPlanoService.confirmAssinaturaPayment('307', {
+        referencia: '2026-08-11',
+        valor: '90',
+      }),
+    { message: 'Informe a referência no formato mês/ano.' },
+  );
+  await assert.rejects(
+    () =>
+      adminPlanoService.confirmAssinaturaPayment('307', {
+        referencia: '2026-08',
+        valor: 'noventa',
+      }),
+    { message: 'Informe um valor monetário válido.' },
+  );
+  assert.equal(calls, 0);
 });
 
 test('planoService propaga erro de assinatura', async () => {

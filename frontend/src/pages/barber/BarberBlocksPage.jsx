@@ -11,10 +11,14 @@ import {
 import { useDocumentTitle } from '../../hooks/useDocumentTitle.js';
 import { useRemoteData } from '../../hooks/useRemoteData.js';
 import { operacionalService } from '../../services/operacionalService.js';
+import { createInitialBlockPeriod } from '../../utils/blockDateTime.js';
+
+const initialForm = () => ({ ...createInitialBlockPeriod(), motivo: '' });
+
 export default function BarberBlocksPage() {
   useDocumentTitle('Meus bloqueios');
   const [page, setPage] = useState(1),
-    [form, setForm] = useState({ inicioLocal: '', fimLocal: '', motivo: '' }),
+    [form, setForm] = useState(initialForm),
     [message, setMessage] = useState('');
   const state = useRemoteData(
     () => operacionalService.myBlocksFiltered({ page, limit: 20 }),
@@ -25,7 +29,7 @@ export default function BarberBlocksPage() {
     setMessage('');
     try {
       await operacionalService.createMyBlock(form);
-      setForm({ inicioLocal: '', fimLocal: '', motivo: '' });
+      setForm(initialForm());
       setMessage('Bloqueio criado.');
       await state.reload();
     } catch (error) {

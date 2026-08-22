@@ -10,12 +10,14 @@ globalThis.window = {
   },
 };
 
+values.set('barbearia.accessToken', 'token-legado');
 const { authStorage } = await import('../src/utils/authStorage.js');
 
-test('authStorage centraliza gravação, leitura e remoção do token', () => {
-  assert.equal(authStorage.getToken(), null);
-  authStorage.setToken('token-test');
-  assert.equal(authStorage.getToken(), 'token-test');
-  authStorage.clear();
-  assert.equal(authStorage.getToken(), null);
+test('authStorage remove somente o token legado e não oferece gravação de JWT', () => {
+  assert.equal(values.has('barbearia.accessToken'), false);
+  assert.equal('getToken' in authStorage, false);
+  assert.equal('setToken' in authStorage, false);
+  values.set('barbearia.accessToken', 'outro-token-legado');
+  authStorage.clearLegacyToken();
+  assert.equal(values.has('barbearia.accessToken'), false);
 });

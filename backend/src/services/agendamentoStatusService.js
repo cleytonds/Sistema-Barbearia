@@ -1,3 +1,4 @@
+import { DateTime } from 'luxon';
 import { runTransactionWithRetry } from '../database/transactionRetry.js';
 import { assertAssignedBarber } from '../domain/appointments/permissions.js';
 import {
@@ -9,6 +10,7 @@ import * as historyRepository from '../repositories/historicoAgendamentoReposito
 import { AppError } from '../utils/AppError.js';
 import { logger } from '../utils/logger.js';
 import { consumirUso } from './usoPlanoService.js';
+import { gerarComissao } from './comissaoService.js';
 
 export async function updateStatus({
   id,
@@ -43,13 +45,41 @@ export async function updateStatus({
           transactionContext,
           now: nowUtc,
         });
+        if (nextStatus === 'concluido')
+          await gerarComissao({ agendamento: appointment, connection, transactionContext });
         return;
+      }
+      let allowEarlyStart = false;
+      if (role === 'barbeiro' && nextStatus === 'em_atendimento') {
+        const settings = await appointmentRepository.findSettings(connection);
+        const localDay = DateTime.fromJSDate(new Date(appointment.inicio_em), {
+          zone: settings.fuso_horario,
+        });
+        const blocker = await appointmentRepository.findBarberStartBlockerForUpdate(
+          {
+            id,
+            barberId: appointment.barbeiro_id,
+            startAt: appointment.inicio_em,
+            dayStartAt: localDay.startOf('day').toUTC().toJSDate(),
+            dayEndAt: localDay.plus({ days: 1 }).startOf('day').toUTC().toJSDate(),
+          },
+          connection,
+        );
+        if (blocker) {
+          const message =
+            blocker.status === 'em_atendimento'
+              ? 'Já existe outro atendimento em andamento.'
+              : 'Existe um agendamento anterior aguardando resolução.';
+          throw new AppError(message, 422, 'EARLY_START_BLOCKED');
+        }
+        allowEarlyStart = true;
       }
       assertStatusTransition({
         currentStatus: appointment.status,
         nextStatus,
         startAt: appointment.inicio_em,
         nowUtc,
+        allowEarlyStart,
       });
       await appointmentRepository.updateStatus({ id, status: nextStatus, nowUtc }, connection);
       if (['concluido', 'ausente'].includes(nextStatus)) {
@@ -61,6 +91,8 @@ export async function updateStatus({
           now: nowUtc,
         });
       }
+      if (nextStatus === 'concluido')
+        await gerarComissao({ agendamento: appointment, connection, transactionContext });
       await historyRepository.create(
         {
           appointmentId: id,

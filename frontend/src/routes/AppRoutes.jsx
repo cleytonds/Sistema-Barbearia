@@ -41,6 +41,7 @@ const AdminDashboardPage = adminPage('AdminDashboardPage'),
   AdminSettingsPage = adminPage('AdminSettingsPage'),
   AdminPlansPage = adminPage('AdminPlansPage'),
   AdminSubscriptionsPage = adminPage('AdminSubscriptionsPage');
+const AdminCommissionsPage = lazy(() => import('../pages/admin/AdminCommissionsPage.jsx'));
 const PlanosPage = lazy(() => import('../pages/PlanosPage.jsx'));
 const MeuPlanoPage = lazy(() => import('../pages/MeuPlanoPage.jsx'));
 const barberLinks = [
@@ -60,6 +61,7 @@ const adminLinks = [
   { to: '/admin/bloqueios', label: 'Bloqueios' },
   { to: '/admin/planos', label: 'Planos' },
   { to: '/admin/assinaturas', label: 'Assinaturas' },
+  { to: '/admin/comissoes', label: 'Comissões' },
   { to: '/admin/configuracoes', label: 'Configurações' },
 ];
 export function AppRoutes() {
@@ -127,6 +129,7 @@ export function AppRoutes() {
               <Route path="/admin/configuracoes" element={<AdminSettingsPage />} />
               <Route path="/admin/planos" element={<AdminPlansPage />} />
               <Route path="/admin/assinaturas" element={<AdminSubscriptionsPage />} />
+              <Route path="/admin/comissoes" element={<AdminCommissionsPage />} />
             </Route>
           </Route>
         </Route>

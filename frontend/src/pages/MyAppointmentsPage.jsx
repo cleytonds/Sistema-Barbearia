@@ -17,7 +17,8 @@ export default function MyAppointmentsPage() {
   const [period, setPeriod] = useState('inicio'),
     [status, setStatus] = useState(''),
     [selected, setSelected] = useState(null),
-    [mode, setMode] = useState(null);
+    [mode, setMode] = useState(null),
+    [hiddenHistoryIds, setHiddenHistoryIds] = useState(() => new Set());
   const query = useMeusAgendamentos({
     ...pagination.params,
     periodo: period,
@@ -33,6 +34,11 @@ export default function MyAppointmentsPage() {
     notify(mode === 'cancel' ? 'Agendamento cancelado.' : 'Agendamento reagendado.', 'success');
     query.reload();
   };
+  const appointments = Array.isArray(query.data?.data) ? query.data.data : [];
+  const visibleAppointments =
+    period === 'historico'
+      ? appointments.filter((appointment) => !hiddenHistoryIds.has(String(appointment.id)))
+      : appointments;
   return (
     <Container as="section" className="page stack">
       <h1>Meus agendamentos</h1>
@@ -85,9 +91,9 @@ export default function MyAppointmentsPage() {
         <Alert type="error">
           Não foi possível carregar. <button onClick={query.reload}>Tentar novamente</button>
         </Alert>
-      ) : query.data?.data?.length ? (
+      ) : visibleAppointments.length ? (
         <div className="stack">
-          {query.data.data.map((appointment) => (
+          {visibleAppointments.map((appointment) => (
             <AppointmentCard
               key={appointment.id}
               appointment={appointment}
@@ -99,6 +105,14 @@ export default function MyAppointmentsPage() {
                 setSelected(item);
                 setMode('reschedule');
               }}
+              onHide={
+                period === 'historico'
+                  ? (item) => {
+                      setHiddenHistoryIds((current) => new Set([...current, String(item.id)]));
+                      notify('Agendamento ocultado nesta visualização.', 'success');
+                    }
+                  : undefined
+              }
             />
           ))}
           <Pagination

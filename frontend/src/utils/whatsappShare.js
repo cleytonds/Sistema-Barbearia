@@ -2,6 +2,7 @@ import { appointmentStatus } from './appointmentStatus.js';
 import { formatDate } from './dateTime.js';
 
 export const DEFAULT_BARBERSHOP_NAME = 'Elite Barbearia 081';
+const SHAREABLE_STATUSES = new Set(['pendente', 'confirmado', 'em_atendimento']);
 
 export function hasWhatsAppShareData(appointment) {
   return Boolean(
@@ -12,7 +13,7 @@ export function hasWhatsAppShareData(appointment) {
     appointment.barbeiro?.nome &&
     appointment.data &&
     appointment.horaInicio &&
-    appointment.status &&
+    SHAREABLE_STATUSES.has(appointment.status) &&
     appointmentStatus[appointment.status],
   );
 }

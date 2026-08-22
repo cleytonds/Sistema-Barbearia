@@ -8,34 +8,23 @@ export { normalizeRoles } from '../routes/routeSecurity.js';
 
 export function AuthProvider({ children }) {
   const [usuario, setUsuario] = useState(null);
-  const [token, setToken] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const clearSession = useCallback(() => {
-    authStorage.clear();
-    setToken(null);
+    authStorage.clearLegacyToken();
     setUsuario(null);
   }, []);
 
   const applySession = useCallback((session) => {
-    if (!session?.accessToken || normalizeRoles(session.usuario).length === 0) {
-      authStorage.clear();
+    if (normalizeRoles(session?.usuario).length === 0) {
       throw new Error('Sessão autenticada inconsistente.');
     }
-    authStorage.setToken(session.accessToken);
-    setToken(session.accessToken);
     setUsuario(session.usuario);
   }, []);
 
   const initialize = useCallback(async () => {
     setLoading(true);
-    const storedToken = authStorage.getToken();
-    if (!storedToken) {
-      clearSession();
-      setLoading(false);
-      return;
-    }
-    setToken(storedToken);
+    authStorage.clearLegacyToken();
     try {
       const response = await authService.me();
       if (normalizeRoles(response.usuario).length === 0)
@@ -75,7 +64,7 @@ export function AuthProvider({ children }) {
 
   const logout = useCallback(async () => {
     try {
-      if (authStorage.getToken()) await authService.logout();
+      await authService.logout();
     } finally {
       clearSession();
     }
@@ -96,9 +85,8 @@ export function AuthProvider({ children }) {
       usuario,
       papeis,
       papelPrincipal: usuario?.papelPrincipal ?? usuario?.perfil ?? null,
-      token,
       loading,
-      isAuthenticated: Boolean(usuario && token),
+      isAuthenticated: Boolean(usuario),
       initialize,
       login,
       logout,
@@ -109,7 +97,7 @@ export function AuthProvider({ children }) {
       hasRole: (role) => papeis.includes(role),
       hasAnyRole: (roles) => roles.some((role) => papeis.includes(role)),
     };
-  }, [usuario, token, loading, initialize, login, logout, register, changePassword]);
+  }, [usuario, loading, initialize, login, logout, register, changePassword]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

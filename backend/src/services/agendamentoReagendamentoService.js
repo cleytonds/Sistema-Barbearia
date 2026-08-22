@@ -13,7 +13,10 @@ import { decidirCobertura } from './coberturaPlanoService.js';
 import { atualizarUsoNoReagendamento } from './usoPlanoService.js';
 
 export async function reschedule({ id, userId, role, payload, nowUtc = new Date(), requestId }) {
-  const preliminary = await appointmentRepository.findByIdWithoutLock(id);
+  const preliminary =
+    role === 'cliente'
+      ? await appointmentRepository.findClientAppointmentById(id, userId)
+      : await appointmentRepository.findByIdWithoutLock(id);
   if (!preliminary) throw new AppError('Agendamento não encontrado.', 404, 'APPOINTMENT_NOT_FOUND');
   const settings = await appointmentRepository.findSettings();
   const newStartAt = localToUtc(`${payload.data}T${payload.horaInicio}:00`, settings.fuso_horario);
@@ -29,7 +32,10 @@ export async function reschedule({ id, userId, role, payload, nowUtc = new Date(
       logContext,
       operation: async ({ connection, transactionContext }) => {
         await availabilityRepository.lockBarber(preliminary.barbeiro_id, connection);
-        const appointment = await appointmentRepository.findByIdForUpdate(id, connection);
+        const appointment =
+          role === 'cliente'
+            ? await appointmentRepository.findClientAppointmentByIdForUpdate(id, userId, connection)
+            : await appointmentRepository.findByIdForUpdate(id, connection);
         if (!appointment || String(appointment.barbeiro_id) !== String(preliminary.barbeiro_id)) {
           throw new AppError('Agendamento não encontrado.', 404, 'APPOINTMENT_NOT_FOUND');
         }

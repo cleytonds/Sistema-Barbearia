@@ -22,7 +22,6 @@ const AccessDeniedPage = (await import('../src/pages/AccessDeniedPage.jsx')).def
 const BarberDashboardPage = (await import('../src/pages/barber/BarberDashboardPage.jsx')).default;
 const { operacionalService } = await import('../src/services/operacionalService.js');
 const { api } = await import('../src/api/client.js');
-const { authStorage } = await import('../src/utils/authStorage.js');
 test.afterEach(cleanup);
 function auth(value, children) {
   const roles = value.usuario?.papeis ?? [value.usuario?.perfil].filter(Boolean);
@@ -116,25 +115,23 @@ test('layout operacional possui navegação, drawer acessível, Escape e axe sem
   assert.equal(results.violations.filter((v) => v.impact === 'critical').length, 0);
 });
 
-test('401 limpa a sessão e emite evento, enquanto 403 preserva o token', async () => {
+test('401 emite evento de sessão inválida e 403 não emite', async () => {
   let unauthorized = 0;
-  window.addEventListener('auth:unauthorized', () => unauthorized++, { once: true });
-  authStorage.setToken('token-de-teste');
+  const listener = () => unauthorized++;
+  window.addEventListener('auth:unauthorized', listener);
   await assert.rejects(
     api.get('/privada', {
       adapter: () => Promise.reject({ response: { status: 401 }, config: { url: '/privada' } }),
     }),
   );
-  assert.equal(authStorage.getToken(), null);
   assert.equal(unauthorized, 1);
-  authStorage.setToken('token-preservado');
   await assert.rejects(
     api.get('/proibida', {
       adapter: () => Promise.reject({ response: { status: 403 }, config: { url: '/proibida' } }),
     }),
   );
-  assert.equal(authStorage.getToken(), 'token-preservado');
-  authStorage.clear();
+  assert.equal(unauthorized, 1);
+  window.removeEventListener('auth:unauthorized', listener);
 });
 
 test('AccessDeniedPage orienta retorno para a área do perfil', () => {

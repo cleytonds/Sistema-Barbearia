@@ -35,6 +35,9 @@ export function normalizeSubscription(subscription) {
     ),
     limiteTotalSnapshot: value(subscription, 'limiteTotalSnapshot', 'limite_total_snapshot'),
     motivoStatus: value(subscription, 'motivoStatus', 'motivo_status'),
+    usoStatus: value(subscription, 'usoStatus', 'uso_status'),
+    servicos: list(subscription.servicos),
+    barbeiros: list(subscription.barbeiros),
   };
 }
 
@@ -46,13 +49,37 @@ function normalizeEnvelope(payload, normalizer) {
   return { ...payload, data };
 }
 
+export function normalizePaymentConfirmation(data) {
+  const reference = String(data?.referencia ?? '').trim();
+  const month = /^\d{4}-\d{2}$/.test(reference)
+    ? reference
+    : /^\d{4}-\d{2}-01$/.test(reference)
+      ? reference.slice(0, 7)
+      : null;
+  if (!month) throw new Error('Informe a referência no formato mês/ano.');
+  const rawValue = String(data?.valor ?? '')
+    .trim()
+    .replace(',', '.');
+  if (!/^(0|[1-9]\d{0,7})(\.\d{1,2})?$/.test(rawValue) || Number(rawValue) <= 0)
+    throw new Error('Informe um valor monetário válido.');
+  const valor = Number(rawValue).toFixed(2);
+  const observacao = String(data?.observacao ?? '').trim();
+  return {
+    referencia: `${month}-01`,
+    valor,
+    forma: 'presencial',
+    ...(observacao && { observacao }),
+  };
+}
+
 /** Serviços públicos do módulo de planos mensais. */
 export const planoService = {
   listPublic: async (params) =>
     normalizeEnvelope((await api.get('/planos', { params })).data, normalizePlan),
   getPublic: async (id) => normalizeEnvelope((await api.get(`/planos/${id}`)).data, normalizePlan),
   sign: async (id, data, key) =>
-    (await api.post(`/planos/${id}/assinar`, data, { headers: { 'Idempotency-Key': key } })).data,
+    (await api.post(`/planos/${id}/solicitacoes`, data, { headers: { 'Idempotency-Key': key } }))
+      .data,
   myPlan: async () => normalizeEnvelope((await api.get('/meu-plano')).data, normalizeSubscription),
   myUsages: async () => (await api.get('/meu-plano/usos')).data,
   cancelOwn: async (motivo) => (await api.post('/meu-plano/cancelar', { motivo })).data,
@@ -62,6 +89,8 @@ export const planoService = {
 export const adminPlanoService = {
   listPlanos: async (params) =>
     normalizeEnvelope((await api.get('/admin/planos', { params })).data, normalizePlan),
+  getPlan: async (id) =>
+    normalizeEnvelope((await api.get(`/admin/planos/${id}`)).data, normalizePlan),
   createPlan: async (data) =>
     normalizeEnvelope((await api.post('/admin/planos', data)).data, normalizePlan),
   updatePlan: async (id, data) =>
@@ -84,8 +113,15 @@ export const adminPlanoService = {
       })
     ).data;
   },
-  listAssinaturas: async (params) => (await api.get('/admin/assinaturas', { params })).data,
-  createAssinatura: async (data) => (await api.post('/admin/assinaturas', data)).data,
+  listAssinaturas: async (params) => (await api.get('/admin/assinaturas-planos', { params })).data,
+  createAssinatura: async (data) => (await api.post('/admin/assinaturas-planos', data)).data,
+  confirmAssinaturaPayment: async (id, data) =>
+    (
+      await api.put(
+        `/admin/assinaturas-planos/${id}/confirmar-pagamento`,
+        normalizePaymentConfirmation(data),
+      )
+    ).data,
   updateAssinaturaStatus: async (id, acao, motivo) =>
-    (await api.patch(`/admin/assinaturas/${id}/status`, { acao, motivo })).data,
+    (await api.put(`/admin/assinaturas-planos/${id}/${acao}`, { motivo })).data,
 };

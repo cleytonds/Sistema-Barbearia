@@ -67,3 +67,14 @@ export const myUsages = async (request, response) => {
     ),
   });
 };
+
+export const cancelMyPlan = async (request, response) => {
+  const id = await assinaturaService.cancelarMinhaAssinatura({
+    clientId: request.auth.usuario.id,
+    motivo: request.body.motivo,
+    requestId: request.requestId,
+  });
+  response.json({
+    data: serializeAssinatura(await assinaturaService.obterAssinaturaAdmin({ id })),
+  });
+};

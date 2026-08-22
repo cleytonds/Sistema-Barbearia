@@ -1,8 +1,11 @@
-import { body } from 'express-validator';
+import { body, query } from 'express-validator';
 import { APPOINTMENT_STATUS } from '../domain/appointments/constants.js';
 import { appointmentIdValidator, appointmentListValidator } from './agendamentoValidators.js';
 
-export const barberListValidator = appointmentListValidator;
+export const barberListValidator = [
+  ...appointmentListValidator,
+  query('arquivados').optional().isBoolean().toBoolean(),
+];
 export const statusValidator = [
   ...appointmentIdValidator,
   body().custom((value) => {

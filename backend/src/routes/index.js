@@ -12,6 +12,7 @@ import { barbeiroAgendamentoRoutes } from './barbeiroAgendamentoRoutes.js';
 import { planoRoutes } from './planoRoutes.js';
 import { meuPlanoRoutes } from './meuPlanoRoutes.js';
 import { adminPlanoRoutes } from './adminPlanoRoutes.js';
+import { adminComissaoRoutes } from './adminComissaoRoutes.js';
 
 export const router = Router();
 
@@ -25,6 +26,7 @@ router.use('/barbeiros', barbeiroRoutes);
 router.use('/configuracoes', configuracaoRoutes);
 router.use('/admin', adminRoutes);
 router.use('/admin', adminPlanoRoutes);
+router.use('/admin', adminComissaoRoutes);
 router.use('/barbeiro', barbeiroAreaRoutes);
 router.use('/disponibilidade', disponibilidadeRoutes);
 router.use('/agendamentos', agendamentoRoutes);

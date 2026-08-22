@@ -313,7 +313,7 @@ export async function obterPlanoAdmin({ id }) {
   const plano = await planoRepository.buscarPlanoPorId(id);
   if (!plano) throw new AppError('Plano não encontrado.', 404, 'PLAN_NOT_FOUND');
   const [servicos, barbeiros] = await Promise.all([
-    planoRepository.listarServicosDoPlano(id),
+    planoRepository.listarServicosDoPlano(id, { includeCommissionBase: true }),
     planoRepository.listarBarbeirosDoPlano(id),
   ]);
   return { ...plano, servicos, barbeiros };

@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { assertSafeTestDatabase } from './testDatabaseSafety.js';
 
 const toPositiveInteger = (value, fallback) => {
   const parsed = Number.parseInt(value, 10);
@@ -6,11 +7,20 @@ const toPositiveInteger = (value, fallback) => {
 };
 
 const knownPlaceholder = 'substitua_por_uma_chave_longa_e_aleatoria';
+const frontendOrigins = (process.env.FRONTEND_URL ?? 'http://localhost:5173')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+const nodeEnv = process.env.NODE_ENV ?? 'development';
+const databaseName = process.env.DB_NAME ?? 'barbearia_agendamento';
+
+assertSafeTestDatabase(nodeEnv, databaseName);
 
 export const env = Object.freeze({
-  nodeEnv: process.env.NODE_ENV ?? 'development',
+  nodeEnv,
   port: toPositiveInteger(process.env.PORT, 3000),
-  frontendUrl: process.env.FRONTEND_URL ?? 'http://localhost:5173',
+  frontendUrl: frontendOrigins[0],
+  frontendOrigins,
   jwt: {
     secret: process.env.JWT_SECRET ?? '',
     expiresIn: process.env.JWT_EXPIRES_IN ?? '15m',
@@ -28,7 +38,7 @@ export const env = Object.freeze({
     port: toPositiveInteger(process.env.DB_PORT, 3306),
     user: process.env.DB_USER ?? 'root',
     password: process.env.DB_PASSWORD ?? '',
-    database: process.env.DB_NAME ?? 'barbearia_agendamento',
+    database: databaseName,
     connectionLimit: toPositiveInteger(process.env.DB_CONNECTION_LIMIT, 10),
   },
 });

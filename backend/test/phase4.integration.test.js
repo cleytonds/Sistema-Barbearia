@@ -32,7 +32,12 @@ async function req(path, { method = 'GET', body, token } = {}) {
     method,
     headers: {
       ...(body && { 'content-type': 'application/json' }),
-      ...(token && { authorization: `Bearer ${token}` }),
+      ...(token && { cookie: `barbearia_session=${token}` }),
+      ...(token &&
+        ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) && {
+          origin: 'http://localhost:5173',
+          'x-csrf-protection': '1',
+        }),
     },
     ...(body && { body: JSON.stringify(body) }),
   });

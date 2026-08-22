@@ -12,7 +12,7 @@ export const app = express();
 app.disable('x-powered-by');
 app.use(requestContext);
 app.use(helmet());
-app.use(cors({ origin: env.frontendUrl, credentials: true }));
+app.use(cors({ origin: env.frontendOrigins, credentials: true }));
 app.use(express.json({ limit: '100kb' }));
 app.use(express.urlencoded({ extended: false }));
 app.use('/api', router);

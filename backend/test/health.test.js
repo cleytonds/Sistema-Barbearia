@@ -35,14 +35,14 @@ test('GET /api/ready returns 200 when readiness succeeds', async () => {
   assert.deepEqual(await response.json(), { status: 'ready' });
 });
 
-test('readiness requires schema and configuracoes.id=1', async () => {
+test('readiness requires schema, configuracoes.id=1, and latest migration', async () => {
   let query;
   let released = false;
   await checkDatabaseReadiness({
     getConnection: async () => ({
       execute: async (sql) => {
         query = sql;
-        return [[{ ready: 1 }]];
+        return [[{ configuration_ready: 1, migration_ready: 1 }]];
       },
       release: () => {
         released = true;
@@ -51,7 +51,19 @@ test('readiness requires schema and configuracoes.id=1', async () => {
   });
 
   assert.match(query, /FROM configuracoes WHERE id = 1/);
+  assert.match(query, /FROM schema_migrations/);
   assert.equal(released, true);
+});
+
+test('readiness rejects a missing latest migration', async () => {
+  await assert.rejects(() =>
+    checkDatabaseReadiness({
+      getConnection: async () => ({
+        execute: async () => [[{ configuration_ready: 1, migration_ready: 0 }]],
+        release: () => {},
+      }),
+    }),
+  );
 });
 
 test('GET /api/ready returns 503 without exposing database details', async () => {

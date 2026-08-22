@@ -55,6 +55,14 @@ export function validateProductionEnvironment({
     ['DB_PORT', Number.isInteger(Number(environment.DB_PORT)) && Number(environment.DB_PORT) > 0],
     ['DB_USER', Boolean(environment.DB_USER?.trim())],
     ['DB_NAME', Boolean(environment.DB_NAME?.trim())],
+    ['EMAIL_HOST', Boolean(environment.EMAIL_HOST?.trim())],
+    [
+      'EMAIL_PORT',
+      Number.isInteger(Number(environment.EMAIL_PORT)) && Number(environment.EMAIL_PORT) > 0,
+    ],
+    ['EMAIL_USER', Boolean(environment.EMAIL_USER?.trim())],
+    ['EMAIL_PASSWORD', Boolean(environment.EMAIL_PASSWORD?.trim())],
+    ['EMAIL_FROM', Boolean(environment.EMAIL_FROM?.trim())],
     [
       'TRUST_PROXY',
       !environment.TRUST_PROXY?.trim() || Boolean(parseTrustProxy(environment.TRUST_PROXY)),

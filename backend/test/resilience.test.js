@@ -282,7 +282,7 @@ test('erro inesperado é registrado com requestId e sem detalhes sensíveis', ()
   assert.equal(JSON.stringify(entries[0]).includes('db-secret'), false);
 });
 
-test('contrato mantém os 14 métodos e caminhos da Fase 6', async () => {
+test('contrato mantém os 15 métodos e caminhos da Fase 6', async () => {
   const specifications = [
     ['../src/routes/agendamentoRoutes.js', '/api/agendamentos'],
     ['../src/routes/barbeiroAgendamentoRoutes.js', '/api/barbeiro/agendamentos'],
@@ -311,6 +311,7 @@ test('contrato mantém os 14 métodos e caminhos da Fase 6', async () => {
       'PUT /api/admin/agendamentos/:id/status',
       'PUT /api/agendamentos/:id/cancelar',
       'PUT /api/agendamentos/:id/reagendar',
+      'PUT /api/barbeiro/agendamentos/:id/arquivar',
       'PUT /api/barbeiro/agendamentos/:id/status',
     ].sort(),
   );

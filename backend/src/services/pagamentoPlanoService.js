@@ -30,6 +30,14 @@ function sameMoney(left, right) {
   return normalize(left) === normalize(right);
 }
 
+function isWithinSubscriptionPeriod({ start, end, subscription }) {
+  const toCivilDate = (value) =>
+    value instanceof Date ? value.toISOString().slice(0, 10) : String(value).slice(0, 10);
+  const subscriptionStart = toCivilDate(subscription.inicio_em);
+  const subscriptionEnd = toCivilDate(subscription.fim_em);
+  return toCivilDate(start) <= subscriptionEnd && toCivilDate(end) >= subscriptionStart;
+}
+
 export async function criarOuObterPagamentoPendente({ data, actorId, requestId }) {
   validatePayment(data);
   return runTransactionWithRetry({
@@ -48,6 +56,18 @@ export async function criarOuObterPagamentoPendente({ data, actorId, requestId }
           'Valor do pagamento diverge do contratado.',
           422,
           'PAYMENT_VALUE_MISMATCH',
+        );
+      if (
+        !isWithinSubscriptionPeriod({
+          start: data.periodoInicio,
+          end: data.periodoFim,
+          subscription,
+        })
+      )
+        throw new AppError(
+          'Competência fora da vigência da assinatura.',
+          422,
+          'PAYMENT_OUTSIDE_SUBSCRIPTION',
         );
       const existing = await pagamentoRepository.buscarPorAssinaturaEReferenciaForUpdate(
         data.assinaturaId,
@@ -118,6 +138,18 @@ export async function confirmarPagamento({ id, actorId, requestId, now = new Dat
           'Valor do pagamento diverge do contratado.',
           422,
           'PAYMENT_VALUE_MISMATCH',
+        );
+      if (
+        !isWithinSubscriptionPeriod({
+          start: payment.periodo_inicio,
+          end: payment.periodo_fim,
+          subscription,
+        })
+      )
+        throw new AppError(
+          'Competência fora da vigência da assinatura.',
+          422,
+          'PAYMENT_OUTSIDE_SUBSCRIPTION',
         );
       await pagamentoRepository.confirmarPagamento(id, { actorId, now }, connection);
       await historicoRepository.registrarEvento(

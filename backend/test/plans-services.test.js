@@ -735,6 +735,59 @@ test('assinatura service: expira vigências encerradas sem duplicar histórico',
   assert.equal((await assinaturaService.obterAssinaturaAdmin({ id: currentId })).status, 'ativa');
 });
 
+test('assinatura service: listagem expira assinaturas vencidas e reativação permanece vencida', async () => {
+  const expiredPlanId = await planoService.criarPlano({
+    data: planData({
+      nome: `${marker} Plano Expirado na Listagem`,
+      utilizacaoInicio: '2020-01-01',
+      utilizacaoFim: '2020-01-31',
+    }),
+    actorId: ids.admin,
+    requestId: `${marker}-expired-list-plan`,
+  });
+  const listedClientId = await insertScenarioClient('expired-list');
+  const listedId = await assinaturaService.criarAssinaturaAdministrativa({
+    data: subscriptionData({ clientId: listedClientId, planoId: expiredPlanId }),
+    actorId: ids.admin,
+    requestId: `${marker}-expired-list-subscription`,
+  });
+  await pool.execute('UPDATE assinaturas_planos SET status = ?, ativada_em = NOW(6) WHERE id = ?', [
+    'ativa',
+    listedId,
+  ]);
+  const list = await assinaturaService.listarAssinaturasAdmin({
+    query: { cliente: String(listedClientId), page: '1', limit: '10' },
+  });
+  assert.equal(list.data[0].status, 'vencida');
+
+  const reactivationClientId = await insertScenarioClient('expired-reactivation');
+  const reactivationId = await assinaturaService.criarAssinaturaAdministrativa({
+    data: subscriptionData({ clientId: reactivationClientId, planoId: expiredPlanId }),
+    actorId: ids.admin,
+    requestId: `${marker}-expired-reactivation-subscription`,
+  });
+  await pool.execute(
+    "UPDATE assinaturas_planos SET status = ?, ativada_em = NOW(6), suspensa_em = NOW(6), motivo_status = 'Teste' WHERE id = ?",
+    ['suspensa', reactivationId],
+  );
+  await assert.rejects(
+    () =>
+      assinaturaService.reativarAssinatura({
+        id: reactivationId,
+        motivo: 'Tentativa de reativação vencida',
+        actorId: ids.admin,
+        requestId: `${marker}-expired-reactivation`,
+      }),
+    (error) => error.code === 'INVALID_SUBSCRIPTION_TRANSITION',
+  );
+  assert.equal(
+    (await assinaturaService.obterAssinaturaAdmin({ id: reactivationId })).status,
+    'vencida',
+  );
+  const history = await assinaturaService.listarHistoricoDaAssinaturaAdmin({ id: reactivationId });
+  assert.equal(history.filter((event) => event.tipo_evento === 'assinatura_vencida').length, 1);
+});
+
 test('assinatura service: obter meu plano e listar usos', async () => {
   const meuPlano = await assinaturaService.obterMeuPlano({ clientId: ids.client });
   assert.equal(meuPlano.cliente_id, ids.client);
@@ -881,7 +934,11 @@ test('pagamento: cria pendente, evita duplicidade e confirma ativando assinatura
 
 test('pagamento: não confirma pendente de assinatura terminal e preserva replay confirmado', async () => {
   const paymentPlanId = await planoService.criarPlano({
-    data: planData({ nome: `${marker} Plano Pagamento Terminal` }),
+    data: planData({
+      nome: `${marker} Plano Pagamento Terminal`,
+      utilizacaoInicio: '2027-01-01',
+      utilizacaoFim: '2027-12-31',
+    }),
     actorId: ids.admin,
     requestId: `${marker}-payment-terminal-plan`,
   });
@@ -960,6 +1017,20 @@ test('pagamento: competência e valor inválidos são rejeitados', async () => {
         actorId: ids.admin,
       }),
     (error) => ['INVALID_PAYMENT_REFERENCE', 'INVALID_PAYMENT_VALUE'].includes(error.code),
+  );
+  await assert.rejects(
+    () =>
+      pagamentoService.criarOuObterPagamentoPendente({
+        data: {
+          assinaturaId: blockCSubscription,
+          referenciaMes: '2027-01-01',
+          periodoInicio: '2027-01-01',
+          periodoFim: '2027-01-31',
+          valor: '129.90',
+        },
+        actorId: ids.admin,
+      }),
+    (error) => error.code === 'PAYMENT_OUTSIDE_SUBSCRIPTION',
   );
 });
 

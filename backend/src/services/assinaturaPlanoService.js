@@ -348,12 +348,19 @@ export async function obterAssinaturaAdmin({ id }) {
 
 export async function listarAssinaturasAdmin({ query }) {
   const pagination = parsePagination(query, allowedSorts, 'criado_em');
-  const result = await assinaturaPlanoRepository.listarAssinaturasAdmin(
+  let result = await assinaturaPlanoRepository.listarAssinaturasAdmin(
     {
       plano: query.plano,
       cliente: query.cliente,
       status: query.status,
     },
+    pagination,
+  );
+  await Promise.all(
+    result.rows.map((assinatura) => expirarAssinaturaSeVencida({ id: assinatura.id })),
+  );
+  result = await assinaturaPlanoRepository.listarAssinaturasAdmin(
+    { plano: query.plano, cliente: query.cliente, status: query.status },
     pagination,
   );
   return paginationResult(result.rows, result.total, pagination);
@@ -460,6 +467,7 @@ export async function suspenderAssinatura({ id, motivo, actorId, requestId }) {
 }
 
 export async function reativarAssinatura({ id, motivo, actorId, requestId }) {
+  await expirarAssinaturaSeVencida({ id, requestId });
   return mutarStatusAssinatura({
     id,
     status: 'ativa',

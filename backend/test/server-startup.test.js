@@ -10,6 +10,11 @@ const productionEnvironment = {
   DB_PORT: '3306',
   DB_USER: 'app',
   DB_NAME: 'barbearia',
+  EMAIL_HOST: 'smtp.example.test',
+  EMAIL_PORT: '587',
+  EMAIL_USER: 'mailer',
+  EMAIL_PASSWORD: 'test-password',
+  EMAIL_FROM: 'App <mailer@example.test>',
 };
 
 function unavailableDatabase() {
@@ -52,6 +57,12 @@ test('production does not start without FRONTEND_URL', async () => {
   await assertProductionConfigurationFailure(environment);
 });
 
+test('production does not start without SMTP configuration', async () => {
+  const environment = { ...productionEnvironment };
+  delete environment.EMAIL_PASSWORD;
+  await assertProductionConfigurationFailure(environment);
+});
+
 test('production does not start when the database is unavailable', async () => {
   const originalExitCode = process.exitCode;
   let listenCalls = 0;
@@ -76,6 +87,29 @@ test('production does not start when the database is unavailable', async () => {
     assert.equal(process.exitCode, 1);
     assert.equal(errors.length, 1);
     assert.match(errors[0], /^\[database\]/);
+  } finally {
+    process.exitCode = originalExitCode;
+  }
+});
+
+test('production starts when SMTP configuration is complete', async () => {
+  const originalExitCode = process.exitCode;
+  let listenCalls = 0;
+  try {
+    const result = await start({
+      checkDatabase: async () => {},
+      listen: (_port, onListening) => {
+        listenCalls += 1;
+        onListening();
+        return {};
+      },
+      logger: { error: () => {}, log: () => {}, warn: () => {} },
+      nodeEnv: 'production',
+      environment: productionEnvironment,
+    });
+    assert.equal(result, undefined);
+    assert.equal(listenCalls, 1);
+    assert.equal(process.exitCode, originalExitCode);
   } finally {
     process.exitCode = originalExitCode;
   }

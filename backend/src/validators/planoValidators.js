@@ -155,9 +155,6 @@ export const signPlanValidator = [
     .isLength({ min: IDEMPOTENCY_KEY_MIN_LENGTH, max: IDEMPOTENCY_KEY_MAX_LENGTH })
     .matches(/^[\x21-\x7e]+$/),
   strictBody(['inicioEm', 'fimEm', 'fusoHorario']),
-  body('inicioEm').matches(datePattern),
-  body('fimEm').matches(datePattern),
-  body('fusoHorario').optional({ nullable: true }).custom(isValidTimeZone),
 ];
 
 export const cancelOwnSubscriptionValidator = [

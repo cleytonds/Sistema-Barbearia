@@ -13,24 +13,40 @@ import { planoRoutes } from './planoRoutes.js';
 import { meuPlanoRoutes } from './meuPlanoRoutes.js';
 import { adminPlanoRoutes } from './adminPlanoRoutes.js';
 import { adminComissaoRoutes } from './adminComissaoRoutes.js';
+import { checkDatabaseConnection } from '../config/database.js';
 
-export const router = Router();
+export function createRouter({ checkDatabase = checkDatabaseConnection } = {}) {
+  const router = Router();
 
-router.get('/health', (_req, res) => {
-  res.json({ status: 'ok', service: 'barbearia-api', timestamp: new Date().toISOString() });
-});
+  router.get('/health', (_req, res) => {
+    res.json({ status: 'ok' });
+  });
 
-router.use('/auth', authRoutes);
-router.use('/servicos', servicoRoutes);
-router.use('/barbeiros', barbeiroRoutes);
-router.use('/configuracoes', configuracaoRoutes);
-router.use('/admin', adminRoutes);
-router.use('/admin', adminPlanoRoutes);
-router.use('/admin', adminComissaoRoutes);
-router.use('/barbeiro', barbeiroAreaRoutes);
-router.use('/disponibilidade', disponibilidadeRoutes);
-router.use('/agendamentos', agendamentoRoutes);
-router.use('/admin/agendamentos', adminAgendamentoRoutes);
-router.use('/barbeiro/agendamentos', barbeiroAgendamentoRoutes);
-router.use('/planos', planoRoutes);
-router.use('/meu-plano', meuPlanoRoutes);
+  router.get('/ready', async (_req, res) => {
+    try {
+      await checkDatabase();
+      res.json({ status: 'ready' });
+    } catch {
+      res.status(503).json({ status: 'not_ready' });
+    }
+  });
+
+  router.use('/auth', authRoutes);
+  router.use('/servicos', servicoRoutes);
+  router.use('/barbeiros', barbeiroRoutes);
+  router.use('/configuracoes', configuracaoRoutes);
+  router.use('/admin', adminRoutes);
+  router.use('/admin', adminPlanoRoutes);
+  router.use('/admin', adminComissaoRoutes);
+  router.use('/barbeiro', barbeiroAreaRoutes);
+  router.use('/disponibilidade', disponibilidadeRoutes);
+  router.use('/agendamentos', agendamentoRoutes);
+  router.use('/admin/agendamentos', adminAgendamentoRoutes);
+  router.use('/barbeiro/agendamentos', barbeiroAgendamentoRoutes);
+  router.use('/planos', planoRoutes);
+  router.use('/meu-plano', meuPlanoRoutes);
+
+  return router;
+}
+
+export const router = createRouter();

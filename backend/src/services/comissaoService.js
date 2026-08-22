@@ -10,6 +10,69 @@ function assertContext(transactionContext, connection) {
     throw new AppError('Contexto transacional inválido.', 500, 'INVALID_TRANSACTION_CONTEXT');
 }
 
+function isValidPercentage(value) {
+  try {
+    assertCommissionPercentage(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isValidPlanBase(value) {
+  try {
+    return value != null && Number(value) > 0 && Boolean(calculateCommission(value, '0'));
+  } catch {
+    return false;
+  }
+}
+
+export function avaliarConfiguracaoComissaoPreDeploy({ barbeiros, servicosPlanos }) {
+  const barbeirosSemPercentualAvulso = [];
+  const servicosPlanosSemValorBase = [];
+  const configuracoesInvalidas = [];
+
+  for (const barbeiro of barbeiros) {
+    const item = { id: String(barbeiro.barbeiro_id), nome: barbeiro.barbeiro_nome };
+    if (!barbeiro.configuracao_ativa || barbeiro.percentual_avulso == null)
+      barbeirosSemPercentualAvulso.push(item);
+    if (barbeiro.percentual_avulso != null && !isValidPercentage(barbeiro.percentual_avulso))
+      configuracoesInvalidas.push({ ...item, campo: 'percentualAvulso' });
+    if (barbeiro.percentual_plano != null && !isValidPercentage(barbeiro.percentual_plano))
+      configuracoesInvalidas.push({ ...item, campo: 'percentualPlano' });
+  }
+
+  for (const servicoPlano of servicosPlanos) {
+    const item = {
+      plano: { id: String(servicoPlano.plano_id), nome: servicoPlano.plano_nome },
+      servico: { id: String(servicoPlano.servico_id), nome: servicoPlano.servico_nome },
+    };
+    if (servicoPlano.valor_base_comissao == null) servicosPlanosSemValorBase.push(item);
+    else if (!isValidPlanBase(servicoPlano.valor_base_comissao))
+      configuracoesInvalidas.push({ ...item, campo: 'valorBaseComissao' });
+  }
+
+  return {
+    ok:
+      barbeirosSemPercentualAvulso.length === 0 &&
+      servicosPlanosSemValorBase.length === 0 &&
+      configuracoesInvalidas.length === 0,
+    barbeirosSemPercentualAvulso,
+    servicosPlanosSemValorBase,
+    configuracoesInvalidas,
+  };
+}
+
+export async function diagnosticarConfiguracaoComissaoPreDeploy({
+  repository = comissaoRepository,
+} = {}) {
+  const [barbeiros, servicosPlanos] = await Promise.all([
+    repository.listarBarbeirosAtivosParaDiagnostico(),
+    repository.listarServicosDePlanosParaDiagnostico(),
+  ]);
+  return avaliarConfiguracaoComissaoPreDeploy({ barbeiros, servicosPlanos });
+}
+
 export async function configurarComissao({
   barbeiroId,
   percentualAvulso,

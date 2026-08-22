@@ -27,6 +27,32 @@ export async function buscarBarbeiroAtivo(barbeiroId, connection = pool) {
   return row ?? null;
 }
 
+export async function listarBarbeirosAtivosParaDiagnostico(connection = pool) {
+  const [rows] = await connection.execute(
+    `SELECT b.id AS barbeiro_id, u.nome AS barbeiro_nome, c.ativo AS configuracao_ativa,
+            CAST(c.percentual_avulso AS CHAR) AS percentual_avulso,
+            CAST(c.percentual_plano AS CHAR) AS percentual_plano
+     FROM barbeiros b
+     JOIN usuarios u ON u.id = b.usuario_id
+     LEFT JOIN configuracoes_comissao_barbeiros c ON c.barbeiro_id = b.id
+     WHERE b.ativo = TRUE
+     ORDER BY b.id`,
+  );
+  return rows;
+}
+
+export async function listarServicosDePlanosParaDiagnostico(connection = pool) {
+  const [rows] = await connection.execute(
+    `SELECT p.id AS plano_id, p.nome AS plano_nome, s.id AS servico_id, s.nome AS servico_nome,
+            CAST(ps.valor_base_comissao AS CHAR) AS valor_base_comissao
+     FROM plano_servicos ps
+     JOIN planos p ON p.id = ps.plano_id
+     JOIN servicos s ON s.id = ps.servico_id
+     ORDER BY p.id, s.id`,
+  );
+  return rows;
+}
+
 export async function salvarConfiguracao(data, connection) {
   await connection.execute(
     `INSERT INTO configuracoes_comissao_barbeiros

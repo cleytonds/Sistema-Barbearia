@@ -1,5 +1,6 @@
 import { runTransactionWithRetry } from '../database/transactionRetry.js';
 import { assertSubscriptionTransition, civilDate } from '../domain/plans/rules.js';
+import { TERMINAL_SUBSCRIPTION_STATUSES } from '../domain/plans/constants.js';
 import * as assinaturaRepository from '../repositories/assinaturaPlanoRepository.js';
 import * as pagamentoRepository from '../repositories/pagamentoPlanoRepository.js';
 import * as historicoRepository from '../repositories/historicoPlanoRepository.js';
@@ -96,6 +97,8 @@ export async function confirmarPagamento({ id, actorId, requestId, now = new Dat
           409,
           'INVALID_PAYMENT_TRANSITION',
         );
+      if (TERMINAL_SUBSCRIPTION_STATUSES.includes(subscription.status))
+        throw new AppError('Assinatura não aceita pagamentos.', 409, 'INVALID_SUBSCRIPTION_STATE');
       await pagamentoRepository.confirmarPagamento(id, { actorId, now }, connection);
       await historicoRepository.registrarEvento(
         {

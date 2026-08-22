@@ -2,19 +2,36 @@ import { app } from './app.js';
 import { checkDatabaseConnection, pool } from './config/database.js';
 import { env } from './config/env.js';
 import { cleanupExpiredRevocations } from './auth/jwtRevocation.js';
+import { fileURLToPath } from 'node:url';
 
 let server;
 
-async function start() {
+export async function start({
+  checkDatabase = checkDatabaseConnection,
+  closeDatabase = () => pool.end(),
+  listen = (...args) => app.listen(...args),
+  logger = console,
+  nodeEnv = env.nodeEnv,
+} = {}) {
   try {
-    await checkDatabaseConnection();
-    console.log('[database] conexão estabelecida');
+    await checkDatabase();
+    logger.log('[database] conexão estabelecida');
   } catch {
-    console.warn('[database] indisponível; a API continuará sem acesso a dados');
+    if (nodeEnv === 'production') {
+      logger.error('[database] indisponível; a API não será iniciada');
+      try {
+        await closeDatabase();
+      } catch {
+        // A falha de encerramento não pode impedir o encerramento fail-closed.
+      }
+      process.exitCode = 1;
+      return null;
+    }
+    logger.warn('[database] indisponível; a API continuará sem acesso a dados');
   }
 
-  server = app.listen(env.port, () => {
-    console.log(`[api] http://localhost:${env.port}`);
+  server = listen(env.port, () => {
+    logger.log(`[api] http://localhost:${env.port}`);
   });
 
   const cleanupInterval = setInterval(async () => {
@@ -39,4 +56,4 @@ async function shutdown(signal) {
 process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 
-start();
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) start();

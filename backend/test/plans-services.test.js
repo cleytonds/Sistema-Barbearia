@@ -19,6 +19,10 @@ const ids = {
   admin: null,
   client: null,
   client2: null,
+  client3: null,
+  client4: null,
+  client5: null,
+  client6: null,
   barberUser: null,
   barberUser2: null,
   barber: null,
@@ -85,6 +89,10 @@ test.before(async () => {
   ids.admin = await insertUser('Admin', 'admin');
   ids.client = await insertUser('Cliente', 'cliente');
   ids.client2 = await insertUser('Cliente2', 'cliente');
+  ids.client3 = await insertUser('Cliente3', 'cliente');
+  ids.client4 = await insertUser('Cliente4', 'cliente');
+  ids.client5 = await insertUser('Cliente5', 'cliente');
+  ids.client6 = await insertUser('Cliente6', 'cliente');
   ids.barberUser = await insertUser('Barbeiro', 'barbeiro');
   ids.barberUser2 = await insertUser('Barbeiro2', 'barbeiro');
   ids.barber = await insertBarber(ids.barberUser);
@@ -97,36 +105,44 @@ test.after(async () => {
   await pool.execute(
     `DELETE h FROM historico_planos h
      WHERE h.plano_id IN (SELECT id FROM planos WHERE nome LIKE ?)
-        OR h.assinatura_id IN (SELECT id FROM assinaturas_planos WHERE cliente_id IN (?, ?))`,
-    [`${marker}%`, ids.client, ids.client2],
+        OR h.assinatura_id IN (SELECT id FROM assinaturas_planos WHERE cliente_id IN (?, ?, ?, ?, ?, ?))`,
+    [`${marker}%`, ids.client, ids.client2, ids.client3, ids.client4, ids.client5, ids.client6],
   );
   await pool.execute(
     `DELETE FROM usos_planos WHERE assinatura_id IN
-      (SELECT id FROM assinaturas_planos WHERE cliente_id IN (?, ?))`,
-    [ids.client, ids.client2],
+      (SELECT id FROM assinaturas_planos WHERE cliente_id IN (?, ?, ?, ?, ?, ?))`,
+    [ids.client, ids.client2, ids.client3, ids.client4, ids.client5, ids.client6],
   );
   await pool.execute(
     `DELETE FROM pagamentos_planos WHERE assinatura_id IN
-      (SELECT id FROM assinaturas_planos WHERE cliente_id IN (?, ?))`,
-    [ids.client, ids.client2],
+      (SELECT id FROM assinaturas_planos WHERE cliente_id IN (?, ?, ?, ?, ?, ?))`,
+    [ids.client, ids.client2, ids.client3, ids.client4, ids.client5, ids.client6],
   );
   await pool.execute(
     `DELETE FROM assinatura_plano_servicos WHERE assinatura_id IN
-      (SELECT id FROM assinaturas_planos WHERE cliente_id IN (?, ?))`,
-    [ids.client, ids.client2],
+      (SELECT id FROM assinaturas_planos WHERE cliente_id IN (?, ?, ?, ?, ?, ?))`,
+    [ids.client, ids.client2, ids.client3, ids.client4, ids.client5, ids.client6],
   );
   await pool.execute(
     `DELETE FROM assinatura_plano_barbeiros WHERE assinatura_id IN
-      (SELECT id FROM assinaturas_planos WHERE cliente_id IN (?, ?))`,
-    [ids.client, ids.client2],
+      (SELECT id FROM assinaturas_planos WHERE cliente_id IN (?, ?, ?, ?, ?, ?))`,
+    [ids.client, ids.client2, ids.client3, ids.client4, ids.client5, ids.client6],
   );
-  await pool.execute(`DELETE FROM assinaturas_planos WHERE cliente_id IN (?, ?)`, [
+  await pool.execute(`DELETE FROM assinaturas_planos WHERE cliente_id IN (?, ?, ?, ?, ?, ?)`, [
     ids.client,
     ids.client2,
+    ids.client3,
+    ids.client4,
+    ids.client5,
+    ids.client6,
   ]);
-  await pool.execute('DELETE FROM agendamentos WHERE cliente_id IN (?, ?)', [
+  await pool.execute('DELETE FROM agendamentos WHERE cliente_id IN (?, ?, ?, ?, ?, ?)', [
     ids.client,
     ids.client2,
+    ids.client3,
+    ids.client4,
+    ids.client5,
+    ids.client6,
   ]);
   await pool.execute(
     `DELETE FROM plano_servicos WHERE plano_id IN (SELECT id FROM planos WHERE nome LIKE ?)`,
@@ -139,10 +155,14 @@ test.after(async () => {
   await pool.execute('DELETE FROM planos WHERE nome LIKE ?', [`${marker}%`]);
   await pool.execute('DELETE FROM servicos WHERE id IN (?, ?)', [ids.service, ids.service2]);
   await pool.execute('DELETE FROM barbeiros WHERE id IN (?, ?)', [ids.barber, ids.barber2]);
-  await pool.execute('DELETE FROM usuarios WHERE id IN (?, ?, ?, ?, ?)', [
+  await pool.execute('DELETE FROM usuarios WHERE id IN (?, ?, ?, ?, ?, ?, ?, ?, ?)', [
     ids.admin,
     ids.client,
     ids.client2,
+    ids.client3,
+    ids.client4,
+    ids.client5,
+    ids.client6,
     ids.barberUser,
     ids.barberUser2,
   ]);
@@ -487,16 +507,47 @@ test('assinatura service: plano 10/08–11/08 aceita solicitação no primeiro d
   assert.ok(result.assinaturaId > 0);
 });
 
+test('assinatura service: requisições concorrentes não criam sobreposição', async () => {
+  const racePlanId = await planoService.criarPlano({
+    data: planData({ nome: `${marker} Plano Corrida` }),
+    actorId: ids.admin,
+    requestId: `${marker}-sub-race-plan`,
+  });
+  const results = await Promise.allSettled(
+    [idemKey(), idemKey()].map((idempotencyKey, index) =>
+      assinaturaService.solicitarAdesao({
+        data: subscriptionData({ clientId: ids.client3, planoId: racePlanId }),
+        actorId: ids.client3,
+        idempotencyKey,
+        requestId: `${marker}-sub-race-${index}`,
+      }),
+    ),
+  );
+
+  const created = results.filter((result) => result.status === 'fulfilled');
+  const rejected = results.filter((result) => result.status === 'rejected');
+  assert.equal(created.length, 1);
+  assert.equal(rejected.length, 1);
+  assert.equal(rejected[0].reason.code, 'SUBSCRIPTION_OVERLAP');
+
+  const [[row]] = await pool.execute(
+    `SELECT COUNT(*) AS total FROM assinaturas_planos
+     WHERE cliente_id = ? AND status IN ('aguardando_pagamento', 'ativa', 'suspensa')`,
+    [ids.client3],
+  );
+  assert.equal(Number(row.total), 1);
+});
+
 test('assinatura service: idempotência replay retorna assinatura original', async () => {
   const key = idemKey();
   const primeira = await assinaturaService.solicitarAdesao({
-    data: subscriptionData({ inicioEm: '2026-10-01', fimEm: '2026-10-31' }),
+    data: subscriptionData({ clientId: ids.client4, inicioEm: '2026-10-01', fimEm: '2026-10-31' }),
     actorId: ids.admin,
     idempotencyKey: key,
     requestId: `${marker}-sub-key1`,
   });
   const replay = await assinaturaService.solicitarAdesao({
-    data: subscriptionData({ inicioEm: '2026-10-01', fimEm: '2026-10-31' }),
+    data: subscriptionData({ clientId: ids.client4, inicioEm: '2026-10-01', fimEm: '2026-10-31' }),
     actorId: ids.admin,
     idempotencyKey: key,
     requestId: `${marker}-sub-key2`,
@@ -505,24 +556,22 @@ test('assinatura service: idempotência replay retorna assinatura original', asy
   assert.equal(replay.replay, true);
 });
 
-test('assinatura service: mesma chave com payload diferente é rejeitada', async () => {
+test('assinatura service: mesma chave ignora vigência controlada pelo cliente', async () => {
   const key = idemKey();
-  await assinaturaService.solicitarAdesao({
-    data: subscriptionData({ inicioEm: '2026-11-01', fimEm: '2026-11-30' }),
+  const primeira = await assinaturaService.solicitarAdesao({
+    data: subscriptionData({ clientId: ids.client5, inicioEm: '2026-11-01', fimEm: '2026-11-30' }),
     actorId: ids.admin,
     idempotencyKey: key,
     requestId: `${marker}-sub-k3a`,
   });
-  await assert.rejects(
-    () =>
-      assinaturaService.solicitarAdesao({
-        data: subscriptionData({ inicioEm: '2026-11-05', fimEm: '2026-11-30' }),
-        actorId: ids.admin,
-        idempotencyKey: key,
-        requestId: `${marker}-sub-k3b`,
-      }),
-    (err) => err.code === 'IDEMPOTENCY_KEY_REUSED',
-  );
+  const replay = await assinaturaService.solicitarAdesao({
+    data: subscriptionData({ clientId: ids.client5, inicioEm: '2026-11-05', fimEm: '2026-11-30' }),
+    actorId: ids.admin,
+    idempotencyKey: key,
+    requestId: `${marker}-sub-k3b`,
+  });
+  assert.equal(replay.assinaturaId, primeira.assinaturaId);
+  assert.equal(replay.replay, true);
 });
 
 test('assinatura service: idempotency key ausente é rejeitada', async () => {
@@ -552,13 +601,100 @@ test('assinatura service: sobreposição de período é rejeitada', async () => 
 
 test('assinatura service: adesão administrativa cria assinatura', async () => {
   const assinaturaId = await assinaturaService.criarAssinaturaAdministrativa({
-    data: subscriptionData({ inicioEm: '2026-08-01', fimEm: '2026-08-05' }),
+    data: subscriptionData({ clientId: ids.client6, inicioEm: '2026-08-01', fimEm: '2026-08-05' }),
     actorId: ids.admin,
     requestId: `${marker}-sub-admin`,
   });
   assert.ok(assinaturaId > 0);
   const assinatura = await assinaturaService.obterAssinaturaAdmin({ id: assinaturaId });
   assert.equal(assinatura.status, 'aguardando_pagamento');
+});
+
+test('assinatura service: expira vigências encerradas sem duplicar histórico', async () => {
+  const expirationPlanId = await planoService.criarPlano({
+    data: planData({ nome: `${marker} Plano Expiração` }),
+    actorId: ids.admin,
+    requestId: `${marker}-expiration-plan`,
+  });
+  const createSubscription = async (month, status) => {
+    const subscriptionId = await assinaturaService.criarAssinaturaAdministrativa({
+      data: subscriptionData({
+        clientId: ids.client3,
+        planoId: expirationPlanId,
+        inicioEm: `${month}-01`,
+        fimEm: `${month}-28`,
+      }),
+      actorId: ids.admin,
+      requestId: `${marker}-expiration-sub-${month}`,
+    });
+    if (status === 'ativa')
+      await pool.execute(
+        'UPDATE assinaturas_planos SET status = ?, ativada_em = NOW(6) WHERE id = ?',
+        [status, subscriptionId],
+      );
+    if (status === 'suspensa')
+      await pool.execute(
+        "UPDATE assinaturas_planos SET status = ?, ativada_em = NOW(6), suspensa_em = NOW(6), motivo_status = 'Teste' WHERE id = ?",
+        [status, subscriptionId],
+      );
+    if (status === 'cancelada')
+      await pool.execute(
+        "UPDATE assinaturas_planos SET status = ?, cancelada_em = NOW(6), motivo_status = 'Teste' WHERE id = ?",
+        [status, subscriptionId],
+      );
+    return subscriptionId;
+  };
+
+  const activeId = await createSubscription('2027-01', 'ativa');
+  const activeResult = await assinaturaService.expirarAssinaturaSeVencida({
+    id: activeId,
+    requestId: `${marker}-expiration-active`,
+    nowUtc: new Date('2027-02-01T03:00:00.000Z'),
+  });
+  assert.equal(activeResult.expirada, true);
+  assert.equal((await assinaturaService.obterAssinaturaAdmin({ id: activeId })).status, 'vencida');
+
+  const suspendedId = await createSubscription('2027-02', 'suspensa');
+  const suspendedResult = await assinaturaService.expirarAssinaturaSeVencida({
+    id: suspendedId,
+    requestId: `${marker}-expiration-suspended`,
+    nowUtc: new Date('2027-03-01T03:00:00.000Z'),
+  });
+  assert.equal(suspendedResult.expirada, true);
+  assert.equal(
+    (await assinaturaService.obterAssinaturaAdmin({ id: suspendedId })).status,
+    'vencida',
+  );
+
+  const replay = await assinaturaService.expirarAssinaturaSeVencida({
+    id: activeId,
+    requestId: `${marker}-expiration-replay`,
+    nowUtc: new Date('2027-02-02T03:00:00.000Z'),
+  });
+  assert.equal(replay.expirada, false);
+  const history = await assinaturaService.listarHistoricoDaAssinaturaAdmin({ id: activeId });
+  assert.equal(history.filter((event) => event.tipo_evento === 'assinatura_vencida').length, 1);
+
+  const cancelledId = await createSubscription('2027-03', 'cancelada');
+  const cancelledResult = await assinaturaService.expirarAssinaturaSeVencida({
+    id: cancelledId,
+    requestId: `${marker}-expiration-cancelled`,
+    nowUtc: new Date('2027-04-01T03:00:00.000Z'),
+  });
+  assert.equal(cancelledResult.expirada, false);
+  assert.equal(
+    (await assinaturaService.obterAssinaturaAdmin({ id: cancelledId })).status,
+    'cancelada',
+  );
+
+  const currentId = await createSubscription('2027-05', 'ativa');
+  const currentResult = await assinaturaService.expirarAssinaturaSeVencida({
+    id: currentId,
+    requestId: `${marker}-expiration-current`,
+    nowUtc: new Date('2027-05-15T03:00:00.000Z'),
+  });
+  assert.equal(currentResult.expirada, false);
+  assert.equal((await assinaturaService.obterAssinaturaAdmin({ id: currentId })).status, 'ativa');
 });
 
 test('assinatura service: obter meu plano e listar usos', async () => {
@@ -572,10 +708,9 @@ test('assinatura service: obter meu plano e listar usos', async () => {
 });
 
 test('assinatura service: suspensão, reativação e cancelamento com transições', async () => {
-  const { assinaturaId } = await assinaturaService.solicitarAdesao({
-    data: subscriptionData({ inicioEm: '2026-08-07', fimEm: '2026-08-10' }),
+  const assinaturaId = await assinaturaService.criarAssinaturaAdministrativa({
+    data: subscriptionData({ clientId: ids.client6, inicioEm: '2026-08-07', fimEm: '2026-08-10' }),
     actorId: ids.admin,
-    idempotencyKey: idemKey(),
     requestId: `${marker}-sub-cycle`,
   });
   // aguardando_pagamento -> cancelada (via cancelamento) é permitido
@@ -590,10 +725,9 @@ test('assinatura service: suspensão, reativação e cancelamento com transiçõ
 });
 
 test('assinatura service: cancelamento sem motivo é rejeitado', async () => {
-  const { assinaturaId } = await assinaturaService.solicitarAdesao({
-    data: subscriptionData({ inicioEm: '2026-08-12', fimEm: '2026-08-15' }),
+  const assinaturaId = await assinaturaService.criarAssinaturaAdministrativa({
+    data: subscriptionData({ clientId: ids.client6, inicioEm: '2026-08-12', fimEm: '2026-08-15' }),
     actorId: ids.admin,
-    idempotencyKey: idemKey(),
     requestId: `${marker}-sub-nomotivo`,
   });
   await assert.rejects(
@@ -609,10 +743,9 @@ test('assinatura service: cancelamento sem motivo é rejeitado', async () => {
 });
 
 test('assinatura service: cancela não reabre assinatura terminal', async () => {
-  const { assinaturaId } = await assinaturaService.solicitarAdesao({
-    data: subscriptionData({ inicioEm: '2026-08-17', fimEm: '2026-08-20' }),
+  const assinaturaId = await assinaturaService.criarAssinaturaAdministrativa({
+    data: subscriptionData({ clientId: ids.client6, inicioEm: '2026-08-17', fimEm: '2026-08-20' }),
     actorId: ids.admin,
-    idempotencyKey: idemKey(),
     requestId: `${marker}-sub-terminal`,
   });
   await assinaturaService.cancelarAssinatura({
@@ -633,7 +766,7 @@ test('assinatura service: cancela não reabre assinatura terminal', async () => 
   );
 });
 
-async function insertAppointment(clientId = ids.client2) {
+async function insertAppointment(clientId = ids.client6) {
   const [result] = await pool.execute(
     `INSERT INTO agendamentos (
       cliente_id, barbeiro_id, servico_id, criado_por, origem, inicio_em, fim_em,
@@ -651,7 +784,7 @@ let blockCPayment;
 test('pagamento: cria pendente, evita duplicidade e confirma ativando assinatura', async () => {
   blockCSubscription = await assinaturaService.criarAssinaturaAdministrativa({
     data: subscriptionData({
-      clientId: ids.client2,
+      clientId: ids.client6,
       inicioEm: '2026-09-01',
       fimEm: '2026-09-30',
     }),
@@ -696,6 +829,72 @@ test('pagamento: cria pendente, evita duplicidade e confirma ativando assinatura
     id: blockCPayment,
     actorId: ids.admin,
     requestId: `${marker}-payment-replay`,
+  });
+  assert.equal(replay.replay, true);
+});
+
+test('pagamento: não confirma pendente de assinatura terminal e preserva replay confirmado', async () => {
+  const paymentPlanId = await planoService.criarPlano({
+    data: planData({ nome: `${marker} Plano Pagamento Terminal` }),
+    actorId: ids.admin,
+    requestId: `${marker}-payment-terminal-plan`,
+  });
+  const createPendingPayment = async (month, status = null) => {
+    const subscriptionId = await assinaturaService.criarAssinaturaAdministrativa({
+      data: subscriptionData({
+        clientId: ids.client3,
+        planoId: paymentPlanId,
+        inicioEm: `${month}-01`,
+        fimEm: `${month}-28`,
+      }),
+      actorId: ids.admin,
+      requestId: `${marker}-payment-terminal-sub-${month}`,
+    });
+    const { pagamento } = await pagamentoService.criarOuObterPagamentoPendente({
+      data: {
+        assinaturaId: subscriptionId,
+        referenciaMes: `${month}-01`,
+        periodoInicio: `${month}-01`,
+        periodoFim: `${month}-28`,
+        valor: '99.90',
+      },
+      actorId: ids.admin,
+      requestId: `${marker}-payment-terminal-create-${month}`,
+    });
+    if (status === 'cancelada')
+      await pool.execute(
+        "UPDATE assinaturas_planos SET status = ?, cancelada_em = NOW(6), motivo_status = 'Teste' WHERE id = ?",
+        [status, subscriptionId],
+      );
+    if (status === 'vencida')
+      await pool.execute(
+        'UPDATE assinaturas_planos SET status = ?, ativada_em = NOW(6) WHERE id = ?',
+        [status, subscriptionId],
+      );
+    return { paymentId: pagamento.id };
+  };
+
+  const cancelled = await createPendingPayment('2027-01', 'cancelada');
+  await assert.rejects(
+    () => pagamentoService.confirmarPagamento({ id: cancelled.paymentId, actorId: ids.admin }),
+    (error) => error.code === 'INVALID_SUBSCRIPTION_STATE',
+  );
+
+  const expired = await createPendingPayment('2027-02', 'vencida');
+  await assert.rejects(
+    () => pagamentoService.confirmarPagamento({ id: expired.paymentId, actorId: ids.admin }),
+    (error) => error.code === 'INVALID_SUBSCRIPTION_STATE',
+  );
+
+  const valid = await createPendingPayment('2027-03');
+  const confirmed = await pagamentoService.confirmarPagamento({
+    id: valid.paymentId,
+    actorId: ids.admin,
+  });
+  assert.equal(confirmed.pagamento.status, 'confirmado');
+  const replay = await pagamentoService.confirmarPagamento({
+    id: valid.paymentId,
+    actorId: ids.admin,
   });
   assert.equal(replay.replay, true);
 });
@@ -750,7 +949,7 @@ test('pagamento: confirmado não pode ser cancelado e cancelado não pode ser co
 
 test('cobertura: plano válido retorna snapshots, competência e contagens', async () => {
   const coverage = await coberturaService.decidirCobertura({
-    clienteId: ids.client2,
+    clienteId: ids.client6,
     servicoId: ids.service,
     barbeiroId: ids.barber,
     data: '2026-09-10',
@@ -775,7 +974,7 @@ test('cobertura: deriva motivos sem aceitar decisão externa', async () => {
   assert.equal(
     (
       await coberturaService.decidirCobertura({
-        clienteId: ids.client2,
+        clienteId: ids.client6,
         servicoId: ids.service,
         barbeiroId: ids.barber,
         data: '2027-01-10',
@@ -786,7 +985,7 @@ test('cobertura: deriva motivos sem aceitar decisão externa', async () => {
   assert.equal(
     (
       await coberturaService.decidirCobertura({
-        clienteId: ids.client2,
+        clienteId: ids.client6,
         servicoId: '999999999',
         barbeiroId: ids.barber,
         data: '2026-09-10',
@@ -797,7 +996,7 @@ test('cobertura: deriva motivos sem aceitar decisão externa', async () => {
   assert.equal(
     (
       await coberturaService.decidirCobertura({
-        clienteId: ids.client2,
+        clienteId: ids.client6,
         servicoId: ids.service,
         barbeiroId: '999999999',
         data: '2026-09-10',
@@ -973,7 +1172,7 @@ test('uso: reagendamento mantém reserva ou libera ao perder cobertura', async (
 
 test('cobertura: pagamento pendente e plano suspenso permanecem avulsos', async () => {
   const pendingId = await assinaturaService.criarAssinaturaAdministrativa({
-    data: subscriptionData({ clientId: ids.client2, inicioEm: '2026-10-01', fimEm: '2026-10-31' }),
+    data: subscriptionData({ clientId: ids.client6, inicioEm: '2026-10-01', fimEm: '2026-10-31' }),
     actorId: ids.admin,
   });
   await pool.execute("UPDATE assinaturas_planos SET status='ativa', ativada_em=NOW(6) WHERE id=?", [
@@ -982,7 +1181,7 @@ test('cobertura: pagamento pendente e plano suspenso permanecem avulsos', async 
   assert.equal(
     (
       await coberturaService.decidirCobertura({
-        clienteId: ids.client2,
+        clienteId: ids.client6,
         servicoId: ids.service,
         barbeiroId: ids.barber,
         data: '2026-10-10',
@@ -998,7 +1197,7 @@ test('cobertura: pagamento pendente e plano suspenso permanecem avulsos', async 
   assert.equal(
     (
       await coberturaService.decidirCobertura({
-        clienteId: ids.client2,
+        clienteId: ids.client6,
         servicoId: ids.service,
         barbeiroId: ids.barber,
         data: '2026-09-10',
@@ -1017,7 +1216,7 @@ test('cobertura: limites semanal, total e flags ilimitadas são respeitados', as
     [blockCSubscription],
   );
   const weekly = await coberturaService.decidirCobertura({
-    clienteId: ids.client2,
+    clienteId: ids.client6,
     servicoId: ids.service,
     barbeiroId: ids.barber,
     data: '2026-09-10',
@@ -1029,7 +1228,7 @@ test('cobertura: limites semanal, total e flags ilimitadas são respeitados', as
     [blockCSubscription],
   );
   const total = await coberturaService.decidirCobertura({
-    clienteId: ids.client2,
+    clienteId: ids.client6,
     servicoId: ids.service,
     barbeiroId: ids.barber,
     data: '2026-09-10',
@@ -1043,7 +1242,7 @@ test('cobertura: limites semanal, total e flags ilimitadas são respeitados', as
   assert.equal(
     (
       await coberturaService.decidirCobertura({
-        clienteId: ids.client2,
+        clienteId: ids.client6,
         servicoId: ids.service,
         barbeiroId: ids.barber,
         data: '2026-09-10',
@@ -1055,7 +1254,7 @@ test('cobertura: limites semanal, total e flags ilimitadas são respeitados', as
 
 test('pagamento: falha de histórico ou autor inválido reverte confirmação e ativação', async () => {
   const subscriptionId = await assinaturaService.criarAssinaturaAdministrativa({
-    data: subscriptionData({ clientId: ids.client2, inicioEm: '2026-11-01', fimEm: '2026-11-30' }),
+    data: subscriptionData({ clientId: ids.client6, inicioEm: '2026-11-01', fimEm: '2026-11-30' }),
     actorId: ids.admin,
   });
   const pending = await pagamentoService.criarOuObterPagamentoPendente({

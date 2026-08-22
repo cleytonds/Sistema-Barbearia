@@ -34,7 +34,7 @@ export const getPublic = async (request, response) =>
 
 export const sign = async (request, response) => {
   const result = await assinaturaService.solicitarAdesao({
-    data: { ...request.body, planoId: request.params.id, clientId: request.auth.usuario.id },
+    data: { planoId: request.params.id, clientId: request.auth.usuario.id },
     actorId: request.auth.usuario.id,
     idempotencyKey: request.get(IDEMPOTENCY_KEY_HEADER),
     requestId: request.requestId,

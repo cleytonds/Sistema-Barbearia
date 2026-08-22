@@ -64,6 +64,10 @@ export async function buscarSobreposicao(clienteId, inicio, fim, connection) {
   return rows;
 }
 
+export async function bloquearClienteParaAssinatura(clienteId, connection) {
+  await connection.execute('SELECT id FROM usuarios WHERE id = ? FOR UPDATE', [clienteId]);
+}
+
 export async function criarAssinatura(data, connection) {
   const [result] = await connection.execute(
     `INSERT INTO assinaturas_planos (

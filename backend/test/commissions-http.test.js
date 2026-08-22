@@ -103,8 +103,8 @@ test.before(async () => {
   const [commission] = await pool.execute(
     `INSERT INTO comissoes
        (agendamento_id,barbeiro_id,tipo_cobranca,valor_base_snapshot,
-        percentual_snapshot,valor_comissao)
-     VALUES(?,?,'avulso',40.00,50.00,20.00)`,
+        percentual_snapshot,valor_comissao,criado_em)
+     VALUES(?,?,'avulso',40.00,50.00,20.00,'2026-08-10 12:35:00')`,
     [appointmentId, barberId],
   );
   commissionId = commission.insertId;

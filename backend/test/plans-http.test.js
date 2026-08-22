@@ -451,34 +451,46 @@ test('admin: altera status da assinatura', async () => {
 // ===========================================================================
 test('cliente: assina plano com idempotência e my-plan/usos', async () => {
   const key = randomUUID();
-  const body = signPayload();
   const response = await api(`/planos/${planId}/solicitacoes`, {
     method: 'POST',
     token: otherClientToken,
-    body,
+    body: {},
     key,
   });
   assert.equal(response.status, 201);
   const created = (await response.json()).data;
   assert.equal(created.status, 'aguardando_pagamento');
   assert.equal(created.idempotency_key_hash, undefined);
+  assert.equal(new Date(created.inicio_em).toISOString().slice(0, 10), '2026-08-01');
+  assert.equal(new Date(created.fim_em).toISOString().slice(0, 10), '2026-12-31');
+  assert.equal(created.fuso_horario_snapshot, zones);
 
-  const replay = await api(`/planos/${planId}/solicitacoes`, {
+  const laterEnd = await api(`/planos/${planId}/solicitacoes`, {
     method: 'POST',
     token: otherClientToken,
-    body,
+    body: signPayload({ fimEm: '2027-12-31' }),
     key,
   });
-  assert.equal(replay.status, 200);
-  assert.equal((await replay.json()).data.id, created.id);
+  assert.equal(laterEnd.status, 200);
+  assert.equal((await laterEnd.json()).data.id, created.id);
 
-  const conflict = await api(`/planos/${planId}/solicitacoes`, {
+  const earlierStart = await api(`/planos/${planId}/solicitacoes`, {
     method: 'POST',
     token: otherClientToken,
-    body: signPayload({ fimEm: '2026-09-29' }),
+    body: signPayload({ inicioEm: '2026-01-01' }),
     key,
   });
-  assert.equal(conflict.status, 409);
+  assert.equal(earlierStart.status, 200);
+  assert.equal((await earlierStart.json()).data.id, created.id);
+
+  const differentTimezone = await api(`/planos/${planId}/solicitacoes`, {
+    method: 'POST',
+    token: otherClientToken,
+    body: signPayload({ fusoHorario: 'UTC' }),
+    key,
+  });
+  assert.equal(differentTimezone.status, 200);
+  assert.equal((await differentTimezone.json()).data.id, created.id);
 
   const myPlan = await api('/meu-plano', { token: otherClientToken });
   assert.equal(myPlan.status, 200);

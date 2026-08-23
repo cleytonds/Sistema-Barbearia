@@ -755,6 +755,8 @@ test('assinatura service: listagem expira assinaturas vencidas e reativação pe
     'ativa',
     listedId,
   ]);
+  const subscribers = await assinaturaService.listarAssinantesDoPlano({ planoId: expiredPlanId });
+  assert.equal(subscribers.find((assinatura) => assinatura.id === listedId).status, 'vencida');
   const list = await assinaturaService.listarAssinaturasAdmin({
     query: { cliente: String(listedClientId), page: '1', limit: '10' },
   });
@@ -786,6 +788,30 @@ test('assinatura service: listagem expira assinaturas vencidas e reativação pe
   );
   const history = await assinaturaService.listarHistoricoDaAssinaturaAdmin({ id: reactivationId });
   assert.equal(history.filter((event) => event.tipo_evento === 'assinatura_vencida').length, 1);
+
+  const cancellationClientId = await insertScenarioClient('expired-cancellation');
+  const cancellationId = await assinaturaService.criarAssinaturaAdministrativa({
+    data: subscriptionData({ clientId: cancellationClientId, planoId: expiredPlanId }),
+    actorId: ids.admin,
+    requestId: `${marker}-expired-cancellation-subscription`,
+  });
+  await pool.execute('UPDATE assinaturas_planos SET status = ?, ativada_em = NOW(6) WHERE id = ?', [
+    'ativa',
+    cancellationId,
+  ]);
+  assert.equal(
+    await assinaturaService.cancelarAssinatura({
+      id: cancellationId,
+      motivo: 'Tentativa após vigência',
+      actorId: ids.admin,
+      requestId: `${marker}-expired-cancellation`,
+    }),
+    cancellationId,
+  );
+  assert.equal(
+    (await assinaturaService.obterAssinaturaAdmin({ id: cancellationId })).status,
+    'vencida',
+  );
 });
 
 test('assinatura service: obter meu plano e listar usos', async () => {

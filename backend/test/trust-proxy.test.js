@@ -34,4 +34,10 @@ test('configured production proxy uses the forwarded client IP', async () => {
 
 test('rejects trust proxy values that would trust arbitrary proxies', () => {
   assert.equal(parseTrustProxy('true'), false);
+  assert.equal(parseTrustProxy('192.0.2.1/64'), false);
+});
+
+test('accepts CIDR prefixes within each IP family limit', () => {
+  assert.deepEqual(parseTrustProxy('192.0.2.1/32'), ['192.0.2.1/32']);
+  assert.deepEqual(parseTrustProxy('2001:db8::1/128'), ['2001:db8::1/128']);
 });

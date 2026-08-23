@@ -19,9 +19,11 @@ export function parseTrustProxy(value) {
   const valid = proxies.every((proxy) => {
     if (trustedProxyAliases.has(proxy)) return true;
     const [address, prefix] = proxy.split('/');
+    const family = isIP(address);
     return (
-      isIP(address) !== 0 &&
-      (prefix === undefined || (/^\d+$/.test(prefix) && Number(prefix) <= 128))
+      family !== 0 &&
+      (prefix === undefined ||
+        (/^\d+$/.test(prefix) && Number(prefix) <= (family === 4 ? 32 : 128)))
     );
   });
   return valid ? proxies : false;

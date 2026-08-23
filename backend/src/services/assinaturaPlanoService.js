@@ -391,7 +391,12 @@ export async function listarMeusUsos({ clientId, assinaturaId }) {
 
 export async function listarAssinantesDoPlano({ planoId }) {
   await planoServiceExists(planoId);
-  return assinaturaPlanoRepository.listarAssinantesDoPlano(planoId);
+  let assinantes = await assinaturaPlanoRepository.listarAssinantesDoPlano(planoId);
+  await Promise.all(
+    assinantes.map((assinatura) => expirarAssinaturaSeVencida({ id: assinatura.id })),
+  );
+  assinantes = await assinaturaPlanoRepository.listarAssinantesDoPlano(planoId);
+  return assinantes;
 }
 
 async function planoServiceExists(planoId) {
@@ -480,6 +485,8 @@ export async function reativarAssinatura({ id, motivo, actorId, requestId }) {
 }
 
 export async function cancelarAssinatura({ id, motivo, actorId, requestId }) {
+  const expiracao = await expirarAssinaturaSeVencida({ id, requestId });
+  if (expiracao.expirada) return expiracao.assinaturaId;
   return mutarStatusAssinatura({
     id,
     status: 'cancelada',

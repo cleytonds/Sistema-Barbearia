@@ -119,6 +119,39 @@ test('production does not start when the database is unavailable', async () => {
   }
 });
 
+test('production reports safe database error fields without starting the API', async () => {
+  const originalExitCode = process.exitCode;
+  const errors = [];
+  let listenCalls = 0;
+  const databaseError = Object.assign(new Error('mysql://user:secret-password@host/database'), {
+    code: 'ECONNREFUSED',
+    errno: 111,
+    sqlState: 'HY000',
+    password: 'secret-password',
+  });
+  try {
+    const result = await start({
+      checkDatabase: async () => Promise.reject(databaseError),
+      closeDatabase: async () => {},
+      listen: () => {
+        listenCalls += 1;
+      },
+      logger: { error: (message) => errors.push(message), log: () => {}, warn: () => {} },
+      nodeEnv: 'production',
+      environment: productionEnvironment,
+    });
+    assert.equal(result, null);
+    assert.equal(listenCalls, 0);
+    assert.equal(
+      errors[0],
+      '[database] indisponível: code=ECONNREFUSED, errno=111, sqlState=HY000; a API não será iniciada',
+    );
+    assert.doesNotMatch(errors[0], /secret-password|mysql:\/\/user/);
+  } finally {
+    process.exitCode = originalExitCode;
+  }
+});
+
 test('production starts when SMTP configuration is complete', async () => {
   const originalExitCode = process.exitCode;
   let listenCalls = 0;

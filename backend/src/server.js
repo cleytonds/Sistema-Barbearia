@@ -6,6 +6,17 @@ import { fileURLToPath } from 'node:url';
 
 let server;
 
+function databaseFailureMessage(error) {
+  const details = [];
+  if (typeof error?.code === 'string' && /^[A-Z0-9_]+$/.test(error.code))
+    details.push(`code=${error.code}`);
+  if (Number.isInteger(error?.errno)) details.push(`errno=${error.errno}`);
+  if (typeof error?.sqlState === 'string' && /^[A-Z0-9]{5}$/.test(error.sqlState))
+    details.push(`sqlState=${error.sqlState}`);
+  const suffix = details.length > 0 ? `: ${details.join(', ')}` : '';
+  return `[database] indisponível${suffix}; a API não será iniciada`;
+}
+
 export async function start({
   checkDatabase = checkDatabaseConnection,
   closeDatabase = () => pool.end(),
@@ -30,7 +41,18 @@ export async function start({
   try {
     await checkDatabase();
     logger.log('[database] conexão estabelecida');
-  } catch {
+  } catch (error) {
+    if (nodeEnv === 'production') {
+      logger.error(databaseFailureMessage(error));
+      try {
+        await closeDatabase();
+      } catch {
+        // A falha de encerramento não pode impedir o encerramento fail-closed.
+      }
+      process.exitCode = 1;
+      return null;
+    }
+
     if (nodeEnv === 'production') {
       logger.error('[database] indisponível; a API não será iniciada');
       try {

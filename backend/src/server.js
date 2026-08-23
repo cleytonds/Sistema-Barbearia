@@ -1,5 +1,5 @@
 import { app } from './app.js';
-import { checkDatabaseConnection, pool } from './config/database.js';
+import { checkDatabaseConnection, diagnoseDatabaseSelection, pool } from './config/database.js';
 import { env, validateProductionEnvironment } from './config/env.js';
 import { cleanupExpiredRevocations } from './auth/jwtRevocation.js';
 import { fileURLToPath } from 'node:url';
@@ -17,8 +17,15 @@ function databaseFailureMessage(error) {
   return `[database] indisponível${suffix}; a API não será iniciada`;
 }
 
+function databaseErrorCode(error) {
+  return typeof error?.code === 'string' && /^[A-Z0-9_]+$/.test(error.code)
+    ? `code=${error.code}`
+    : 'code=unknown';
+}
+
 export async function start({
   checkDatabase = checkDatabaseConnection,
+  diagnoseDatabase = diagnoseDatabaseSelection,
   closeDatabase = () => pool.end(),
   listen = (...args) => app.listen(...args),
   logger = console,
@@ -45,6 +52,16 @@ export async function start({
     logger.log('[database] conexão estabelecida');
   } catch (error) {
     if (nodeEnv === 'production') {
+      try {
+        const diagnostic = await diagnoseDatabase();
+        logger.log(
+          `[database] diagnostic: database=${diagnostic.databaseName}, listed=${diagnostic.databaseListed ? 'yes' : 'no'}`,
+        );
+        if (diagnostic.useError)
+          logger.error(`[database] diagnostic use failed: ${databaseErrorCode(diagnostic.useError)}`);
+      } catch (diagnosticError) {
+        logger.error(`[database] diagnostic unavailable: ${databaseErrorCode(diagnosticError)}`);
+      }
       logger.error(databaseFailureMessage(error));
       try {
         await closeDatabase();

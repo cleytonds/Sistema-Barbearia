@@ -22,6 +22,31 @@ export async function checkDatabaseConnection() {
   }
 }
 
+export async function diagnoseDatabaseSelection({
+  databaseConfig = env.database,
+  createConnection = mysql.createConnection,
+} = {}) {
+  const { database: databaseName, ...connectionConfig } = databaseConfig;
+  const connection = await createConnection({ ...connectionConfig, connectTimeout: 5000 });
+  try {
+    await connection.query('SELECT DATABASE()');
+    const [databases] = await connection.query('SHOW DATABASES');
+    let useError = null;
+    try {
+      await connection.query('USE ??', [databaseName]);
+    } catch (error) {
+      useError = error;
+    }
+    return {
+      databaseName,
+      databaseListed: databases.some((row) => row.Database === databaseName),
+      useError,
+    };
+  } finally {
+    await connection.end();
+  }
+}
+
 export async function checkDatabaseReadiness(databasePool = pool) {
   const connection = await databasePool.getConnection();
   try {

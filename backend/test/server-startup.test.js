@@ -98,6 +98,11 @@ test('production does not start when the database is unavailable', async () => {
   try {
     const result = await start({
       checkDatabase: unavailableDatabase,
+      diagnoseDatabase: async () => ({
+        databaseName: 'barbearia',
+        databaseListed: false,
+        useError: null,
+      }),
       closeDatabase: async () => {
         closeCalls += 1;
       },
@@ -132,6 +137,11 @@ test('production reports safe database error fields without starting the API', a
   try {
     const result = await start({
       checkDatabase: async () => Promise.reject(databaseError),
+      diagnoseDatabase: async () => ({
+        databaseName: 'barbearia',
+        databaseListed: false,
+        useError: null,
+      }),
       closeDatabase: async () => {},
       listen: () => {
         listenCalls += 1;
@@ -147,6 +157,44 @@ test('production reports safe database error fields without starting the API', a
       '[database] indisponível: code=ECONNREFUSED, errno=111, sqlState=HY000; a API não será iniciada',
     );
     assert.doesNotMatch(errors[0], /secret-password|mysql:\/\/user/);
+  } finally {
+    process.exitCode = originalExitCode;
+  }
+});
+
+test('production database diagnostic logs only database availability and safe error code', async () => {
+  const originalExitCode = process.exitCode;
+  const logs = [];
+  const errors = [];
+  let listenCalls = 0;
+  try {
+    const result = await start({
+      checkDatabase: async () => Promise.reject(Object.assign(new Error('connection failed'), { code: 'ER_BAD_DB_ERROR' })),
+      diagnoseDatabase: async () => ({
+        databaseName: 'railway',
+        databaseListed: true,
+        useError: Object.assign(new Error('mysql://user:secret-password@host/railway'), {
+          code: 'ER_BAD_DB_ERROR',
+          password: 'secret-password',
+        }),
+      }),
+      closeDatabase: async () => {},
+      listen: () => {
+        listenCalls += 1;
+      },
+      logger: {
+        error: (message) => errors.push(message),
+        log: (message) => logs.push(message),
+        warn: () => {},
+      },
+      nodeEnv: 'production',
+      environment: productionEnvironment,
+    });
+    assert.equal(result, null);
+    assert.equal(listenCalls, 0);
+    assert.ok(logs.includes('[database] diagnostic: database=railway, listed=yes'));
+    assert.ok(errors.includes('[database] diagnostic use failed: code=ER_BAD_DB_ERROR'));
+    assert.doesNotMatch([...logs, ...errors].join(' '), /secret-password|mysql:\/\/user|db\.example\.test|\bapp\b/);
   } finally {
     process.exitCode = originalExitCode;
   }

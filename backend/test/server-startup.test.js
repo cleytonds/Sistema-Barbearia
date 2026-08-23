@@ -155,6 +155,7 @@ test('production reports safe database error fields without starting the API', a
 test('production starts when SMTP configuration is complete', async () => {
   const originalExitCode = process.exitCode;
   let listenCalls = 0;
+  const logs = [];
   try {
     const result = await start({
       checkDatabase: async () => {},
@@ -163,13 +164,15 @@ test('production starts when SMTP configuration is complete', async () => {
         onListening();
         return {};
       },
-      logger: { error: () => {}, log: () => {}, warn: () => {} },
+      logger: { error: () => {}, log: (message) => logs.push(message), warn: () => {} },
       nodeEnv: 'production',
       environment: productionEnvironment,
     });
     assert.equal(result, undefined);
     assert.equal(listenCalls, 1);
     assert.equal(process.exitCode, originalExitCode);
+    assert.equal(logs[0], '[database] database=barbearia');
+    assert.doesNotMatch(logs.join(' '), /db\.example\.test|test-password|\bapp\b/);
   } finally {
     process.exitCode = originalExitCode;
   }

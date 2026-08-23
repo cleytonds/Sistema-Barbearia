@@ -38,6 +38,8 @@ export async function start({
     return null;
   }
 
+  if (nodeEnv === 'production') logger.log(`[database] database=${environment.DB_NAME}`);
+
   try {
     await checkDatabase();
     logger.log('[database] conexão estabelecida');

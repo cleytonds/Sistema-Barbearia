@@ -14,6 +14,13 @@ export async function start({
   nodeEnv = env.nodeEnv,
   environment = process.env,
 } = {}) {
+  const invalidVariables = validateProductionEnvironment({ environment, nodeEnv });
+  if (invalidVariables.length > 0) {
+    logger.error(`[config] produção incompleta: ${invalidVariables.join(', ')}`);
+    process.exitCode = 1;
+    return null;
+  }
+
   if (validateProductionEnvironment({ environment, nodeEnv }).length > 0) {
     logger.error('[config] produÃ§Ã£o incompleta; a API nÃ£o serÃ¡ iniciada');
     process.exitCode = 1;

@@ -63,6 +63,33 @@ test('production does not start without SMTP configuration', async () => {
   await assertProductionConfigurationFailure(environment);
 });
 
+test('production reports invalid variable names without exposing their values', async () => {
+  const originalExitCode = process.exitCode;
+  const errors = [];
+  let listenCalls = 0;
+  try {
+    const result = await start({
+      checkDatabase: async () => assert.fail('database must not be checked'),
+      listen: () => {
+        listenCalls += 1;
+      },
+      logger: { error: (message) => errors.push(message), log: () => {}, warn: () => {} },
+      nodeEnv: 'production',
+      environment: {
+        ...productionEnvironment,
+        JWT_SECRET: 'short-secret-value',
+        DB_PORT: 'invalid-port-value',
+      },
+    });
+    assert.equal(result, null);
+    assert.equal(listenCalls, 0);
+    assert.equal(errors[0], '[config] produção incompleta: JWT_SECRET, DB_PORT');
+    assert.doesNotMatch(errors[0], /short-secret-value|invalid-port-value/);
+  } finally {
+    process.exitCode = originalExitCode;
+  }
+});
+
 test('production does not start when the database is unavailable', async () => {
   const originalExitCode = process.exitCode;
   let listenCalls = 0;

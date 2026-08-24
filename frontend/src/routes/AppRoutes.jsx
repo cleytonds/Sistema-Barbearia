@@ -5,6 +5,7 @@ import { ProtectedRoute } from './ProtectedRoute.jsx';
 import { RoleRoute } from './RoleRoute.jsx';
 import { GuestRoute } from './GuestRoute.jsx';
 import { OperationalLayout } from '../components/operational/index.jsx';
+import { RouteLoader } from '../components/ui/index.jsx';
 const HomePage = lazy(() => import('../pages/HomePage.jsx'));
 const LoginPage = lazy(() => import('../pages/LoginPage.jsx'));
 const RegisterPage = lazy(() => import('../pages/RegisterPage.jsx'));
@@ -66,7 +67,7 @@ const adminLinks = [
 ];
 export function AppRoutes() {
   return (
-    <Suspense fallback={<main aria-busy="true">Carregando página…</main>}>
+    <Suspense fallback={<RouteLoader label="Carregando página" />}>
       <Routes>
         <Route element={<PublicLayout />}>
           <Route path="/" element={<HomePage />} />

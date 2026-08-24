@@ -164,7 +164,7 @@ test('RoleRoute aguarda loading, exige autenticação e nega papel incompatível
     );
 
   renderRoute(authValue(null, { loading: true }));
-  assert.ok(screen.getByText(/Validando permissões/));
+  assert.equal(screen.getByRole('status').textContent, '');
   cleanup();
   renderRoute(authValue(null));
   assert.ok(screen.getByText('Login'));

@@ -44,6 +44,30 @@ h3 {
 .page {
   padding-block: clamp(2rem, 6vw, 5rem);
 }
+.route-loader {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  background: var(--color-bg);
+}
+.route-loader__indicator {
+  width: 2rem;
+  aspect-ratio: 1;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-brand-400);
+  border-radius: 50%;
+  animation: route-loader-spin 700ms linear infinite;
+}
+@keyframes route-loader-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .route-loader__indicator {
+    animation-duration: 1.5s;
+  }
+}
 .section {
   padding-block: clamp(3rem, 8vw, 6rem);
 }

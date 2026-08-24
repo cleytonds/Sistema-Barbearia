@@ -94,6 +94,13 @@ export function Alert({ children, type = 'info' }) {
 export function Spinner({ label = 'Carregando' }) {
   return <span role="status">{label}…</span>;
 }
+export function RouteLoader({ label = 'Carregando conteúdo' }) {
+  return (
+    <main className="route-loader" aria-busy="true" role="status" aria-label={label}>
+      <span className="route-loader__indicator" aria-hidden="true" />
+    </main>
+  );
+}
 export function Skeleton({ label = 'Carregando conteúdo' }) {
   return <div className="skeleton" role="status" aria-label={label} />;
 }

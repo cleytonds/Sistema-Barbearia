@@ -46,7 +46,8 @@ export function AuthProvider({ children }) {
 
   const login = useCallback(
     async (email, senha) => {
-      const session = await authService.login(email, senha);
+      await authService.login(email, senha);
+      const session = await authService.me();
       applySession(session);
       return session.usuario;
     },

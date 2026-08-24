@@ -13,6 +13,16 @@ test('usa VITE_API_URL configurada sem alterar a URL de produção', () => {
   );
 });
 
+test('aceita /api relativa para o proxy same-origin de produÃ§Ã£o', () => {
+  assert.equal(
+    resolveApiBaseUrl('/api', {
+      protocol: 'https:',
+      hostname: 'sistema-barbearia-bice.vercel.app',
+    }),
+    '/api',
+  );
+});
+
 test('sem VITE_API_URL usa o hostname de quem abriu o frontend', () => {
   assert.equal(
     resolveApiBaseUrl(undefined, { protocol: 'http:', hostname: '192.168.1.23' }),

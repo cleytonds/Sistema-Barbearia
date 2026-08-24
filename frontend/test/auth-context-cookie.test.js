@@ -53,15 +53,20 @@ test('reload consulta /auth/me e preserva usuário com múltiplos papéis', asyn
   assert.equal('token' in current, false);
 });
 
-test('login aceita resposta sem accessToken e logout limpa somente o estado React', async () => {
+test('login confirma a sessÃ£o por /auth/me antes de atualizar o estado React', async () => {
   const usuario = { id: '2', perfil: 'cliente', papeis: ['cliente'] };
   const requests = [];
+  let loginConcluido = false;
   api.defaults.adapter = (config) => {
     requests.push(config);
     if (config.url === '/auth/me') {
+      if (loginConcluido) return response(config, { usuario });
       return Promise.reject({ response: { status: 401 }, config });
     }
-    if (config.url === '/auth/login') return response(config, { usuario });
+    if (config.url === '/auth/login') {
+      loginConcluido = true;
+      return response(config, {});
+    }
     if (config.url === '/auth/logout') return response(config, {}, 204);
     throw new Error(`Requisição inesperada: ${config.url}`);
   };
@@ -86,4 +91,17 @@ test('login aceita resposta sem accessToken e logout limpa somente o estado Reac
   assert.equal(loginRequest.headers.get('Authorization'), undefined);
   assert.equal(loginRequest.headers.get('X-CSRF-Protection'), '1');
   assert.equal(logoutRequest.headers.get('X-CSRF-Protection'), '1');
+});
+
+test('login nÃ£o autentica quando a confirmaÃ§Ã£o por /auth/me retorna 401', async () => {
+  api.defaults.adapter = (config) => {
+    if (config.url === '/auth/login') return response(config, {});
+    if (config.url === '/auth/me') return Promise.reject({ response: { status: 401 }, config });
+    throw new Error(`RequisiÃ§Ã£o inesperada: ${config.url}`);
+  };
+  render(React.createElement(AuthProvider, null, React.createElement(Probe)));
+  await waitFor(() => assert.equal(current.loading, false));
+
+  await assert.rejects(() => current.login('cliente@example.test', 'senha-artificial'));
+  assert.equal(current.isAuthenticated, false);
 });

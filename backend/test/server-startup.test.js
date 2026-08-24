@@ -10,10 +10,7 @@ const productionEnvironment = {
   DB_PORT: '3306',
   DB_USER: 'app',
   DB_NAME: 'barbearia',
-  EMAIL_HOST: 'smtp.example.test',
-  EMAIL_PORT: '587',
-  EMAIL_USER: 'mailer',
-  EMAIL_PASSWORD: 'test-password',
+  BREVO_API_KEY: 'brevo_test_api_key',
   EMAIL_FROM: 'App <mailer@example.test>',
 };
 
@@ -57,9 +54,9 @@ test('production does not start without FRONTEND_URL', async () => {
   await assertProductionConfigurationFailure(environment);
 });
 
-test('production does not start without SMTP configuration', async () => {
+test('production does not start without BREVO_API_KEY', async () => {
   const environment = { ...productionEnvironment };
-  delete environment.EMAIL_PASSWORD;
+  delete environment.BREVO_API_KEY;
   await assertProductionConfigurationFailure(environment);
 });
 
@@ -169,7 +166,8 @@ test('production database diagnostic logs only database availability and safe er
   let listenCalls = 0;
   try {
     const result = await start({
-      checkDatabase: async () => Promise.reject(Object.assign(new Error('connection failed'), { code: 'ER_BAD_DB_ERROR' })),
+      checkDatabase: async () =>
+        Promise.reject(Object.assign(new Error('connection failed'), { code: 'ER_BAD_DB_ERROR' })),
       diagnoseDatabase: async () => ({
         databaseName: 'railway',
         databaseListed: true,
@@ -194,13 +192,16 @@ test('production database diagnostic logs only database availability and safe er
     assert.equal(listenCalls, 0);
     assert.ok(logs.includes('[database] diagnostic: database=railway, listed=yes'));
     assert.ok(errors.includes('[database] diagnostic use failed: code=ER_BAD_DB_ERROR'));
-    assert.doesNotMatch([...logs, ...errors].join(' '), /secret-password|mysql:\/\/user|db\.example\.test|\bapp\b/);
+    assert.doesNotMatch(
+      [...logs, ...errors].join(' '),
+      /secret-password|mysql:\/\/user|db\.example\.test|\bapp\b/,
+    );
   } finally {
     process.exitCode = originalExitCode;
   }
 });
 
-test('production starts when SMTP configuration is complete', async () => {
+test('production starts with Brevo configuration and without SMTP variables', async () => {
   const originalExitCode = process.exitCode;
   let listenCalls = 0;
   const logs = [];

@@ -1,4 +1,4 @@
-import { createContext, useCallback, useEffect, useMemo, useState } from 'react';
+import { createContext, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { authService } from '../services/authService.js';
 import { authStorage } from '../utils/authStorage.js';
 import { normalizeRoles } from '../routes/routeSecurity.js';
@@ -9,8 +9,10 @@ export { normalizeRoles } from '../routes/routeSecurity.js';
 export function AuthProvider({ children }) {
   const [usuario, setUsuario] = useState(null);
   const [loading, setLoading] = useState(true);
+  const sessionVersion = useRef(0);
 
   const clearSession = useCallback(() => {
+    sessionVersion.current += 1;
     authStorage.clearLegacyToken();
     setUsuario(null);
   }, []);
@@ -23,15 +25,16 @@ export function AuthProvider({ children }) {
   }, []);
 
   const initialize = useCallback(async () => {
+    const requestVersion = sessionVersion.current;
     setLoading(true);
     authStorage.clearLegacyToken();
     try {
       const response = await authService.me();
       if (normalizeRoles(response.usuario).length === 0)
         throw new Error('Sessão autenticada inconsistente.');
-      setUsuario(response.usuario);
+      if (sessionVersion.current === requestVersion) setUsuario(response.usuario);
     } catch {
-      clearSession();
+      if (sessionVersion.current === requestVersion) clearSession();
     } finally {
       setLoading(false);
     }
@@ -48,6 +51,7 @@ export function AuthProvider({ children }) {
     async (email, senha) => {
       await authService.login(email, senha);
       const session = await authService.me();
+      sessionVersion.current += 1;
       applySession(session);
       return session.usuario;
     },

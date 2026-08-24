@@ -29,7 +29,12 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401 && !error.config?.url?.endsWith('/auth/login')) {
+    const url = error.config?.url ?? '';
+    if (
+      error.response?.status === 401 &&
+      !url.endsWith('/auth/login') &&
+      !url.endsWith('/auth/me')
+    ) {
       window.dispatchEvent(new CustomEvent('auth:unauthorized'));
     }
     return Promise.reject(error);

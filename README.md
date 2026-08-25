@@ -1,204 +1,385 @@
-# Sistema de Agendamento para Barbearia
+# Elite Barbearia 081 — Sistema de Agendamento
 
-Aplicação full stack para gestão de agendamentos de uma barbearia. A Fase 1 estabelece o monorepo, a API Express, a conexão MySQL e a aplicação React responsiva.
+Sistema full stack para gestão de uma barbearia, com agendamento online, áreas separadas para cliente, barbeiro e administrador, planos mensais, controle operacional e autenticação segura.
 
-## Tecnologias
+> **Status:** em produção, com foco atual em estabilidade operacional da Elite Barbearia 081.
 
-- Frontend: React, Vite, React Router DOM, Axios e CSS responsivo.
-- Backend: Node.js, Express ES Modules, mysql2/promise, Helmet, CORS e dotenv.
-- Banco: MySQL ou MariaDB (schema e migrations serão criados na Fase 2).
+## Produção
 
-## Estrutura
+- **Frontend:** https://sistema-barbearia-bice.vercel.app
+- **Backend:** Railway
+- **Banco de dados:** MySQL na Railway
+- **E-mail transacional:** Brevo via API HTTPS
+- **Arquitetura atual:** single-tenant (uma barbearia)
+
+A evolução para multi-barbearia/SaaS está planejada, mas não faz parte da versão de produção atual.
+
+## Principais funcionalidades
+
+### Cliente
+
+- cadastro, login e logout;
+- recuperação e redefinição de senha;
+- consulta de serviços e profissionais;
+- consulta de disponibilidade por data;
+- criação de agendamento;
+- proteção contra dupla reserva;
+- cancelamento e reagendamento conforme regras de prazo;
+- acompanhamento dos próprios agendamentos;
+- consulta e adesão a planos mensais;
+- acompanhamento da própria assinatura e utilizações.
+
+### Barbeiro
+
+- área operacional protegida;
+- dashboard e agenda própria;
+- consulta de detalhes dos próprios atendimentos;
+- alteração controlada de status;
+- consulta de jornada;
+- criação e consulta de bloqueios permitidos;
+- isolamento entre profissionais;
+- comissão conforme regras administrativas;
+- arquivamento operacional de atendimentos encerrados.
+
+### Administrador
+
+- dashboard operacional;
+- gestão de agendamentos;
+- criação manual de agendamento com idempotência;
+- cancelamento e reagendamento administrativo;
+- gestão de serviços;
+- gestão de profissionais;
+- vínculos entre profissionais e serviços;
+- horários de funcionamento;
+- jornadas individuais;
+- bloqueios de agenda;
+- configuração geral da barbearia;
+- gestão de planos mensais e assinaturas;
+- confirmação presencial de pagamentos de planos;
+- acompanhamento de utilizações e histórico;
+- gestão de comissões.
+
+## Stack
+
+### Frontend
+
+- React 19
+- Vite
+- React Router
+- Axios
+- PWA
+- CSS responsivo próprio
+
+### Backend
+
+- Node.js
+- ES Modules
+- Express 5
+- `mysql2/promise`
+- JWT
+- `bcryptjs`
+- Helmet
+- CORS
+- rate limiting
+- `express-validator`
+- Luxon
+
+### Infraestrutura
+
+- Vercel — frontend
+- Railway — API
+- Railway MySQL — banco de produção
+- Brevo — e-mails transacionais via HTTPS
+
+## Arquitetura resumida
 
 ```text
-backend/
-  src/config/         ambiente e banco
-  src/middlewares/    tratamento HTTP
-  src/routes/         rotas da API
-  src/utils/          utilitários compartilhados
-  test/               testes automatizados
-frontend/
-  src/styles/         estilos globais
-  src/App.jsx         rotas iniciais
-  src/main.jsx        bootstrap React
+Navegador
+   |
+   | HTTPS
+   v
+Vercel — React/Vite
+   |
+   | /api/* (proxy same-origin)
+   v
+Railway — Node.js/Express
+   |
+   +------> MySQL Railway
+   |
+   +------> Brevo HTTPS API
 ```
 
-As pastas `controllers`, `services`, `repositories`, `validators`, `database/migrations`, além de contexts, layouts e páginas específicas do frontend, serão adicionadas nas fases correspondentes para evitar estruturas vazias.
+A API é montada sob `/api`. Em produção, o frontend utiliza `/api` como URL-base; a Vercel encaminha as requisições ao backend da Railway. Isso mantém o navegador em uma origem consistente e permite o uso do cookie de sessão `SameSite=Lax` sem reduzir a proteção do cookie.
 
-## Requisitos
+Mais detalhes: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-- Node.js 22 ou superior
-- npm 10 ou superior
-- MySQL 8+ ou MariaDB 10.6+
+## Autenticação e papéis
 
-## Instalação
+O sistema utiliza JWT armazenado em cookie de sessão:
 
-No Windows PowerShell, use o executável `npm.cmd` para evitar bloqueios do wrapper `npm.ps1` pela política de execução:
+```text
+barbearia_session
+```
+
+Em produção:
+
+- `HttpOnly`;
+- `Secure`;
+- `SameSite=Lax`;
+- `Path=/`.
+
+Os papéis suportados são:
+
+- `cliente`;
+- `barbeiro`;
+- `admin`.
+
+Um usuário pode possuir mais de um papel. O frontend controla navegação e experiência, mas **a autorização efetiva é sempre validada pelo backend**.
+
+A proteção inclui ainda:
+
+- validação de usuário ativo;
+- versão de autenticação;
+- revogação de sessão/token;
+- proteção CSRF nas operações aplicáveis;
+- CORS com credenciais;
+- rate limiting;
+- respostas de erro sem exposição de stack ou segredos.
+
+## Modelo arquitetural do backend
+
+O fluxo padrão é:
+
+```text
+Route
+  -> Controller
+      -> Service
+          -> Domain / Repository
+              -> MySQL
+```
+
+Responsabilidades:
+
+- **Route:** composição de endpoint e middlewares;
+- **Controller:** contrato HTTP e serialização;
+- **Service:** regra de negócio, autorização contextual e transações;
+- **Repository:** SQL parametrizado e persistência;
+- **Domain:** regras puras e determinísticas quando aplicável.
+
+## Agendamento e concorrência
+
+A disponibilidade pública é uma consulta, não uma reserva garantida. Na criação real do agendamento, o backend executa nova validação dentro de transação.
+
+Fluxo simplificado:
+
+```text
+iniciar transação
+  -> bloquear profissional
+  -> validar cliente/profissional/serviço/vínculo
+  -> validar funcionamento e jornada
+  -> validar pausas e bloqueios
+  -> revalidar conflitos
+  -> decidir cobertura plano x avulso
+  -> criar agendamento com snapshots
+  -> reservar uso do plano, quando aplicável
+  -> registrar histórico
+commit
+```
+
+Em caso de erro, ocorre rollback. Operações críticas usam idempotência e locks para reduzir duplicidade e conflitos concorrentes.
+
+## Banco de dados e migrations
+
+O schema é gerenciado por migrations numeradas. A versão atual possui migrations `001` a `018`.
+
+Comandos:
 
 ```powershell
-npm.cmd install
+npm.cmd run migrate:status --prefix backend
+npm.cmd run migrate --prefix backend
+```
+
+Nunca edite uma migration já aplicada. Novas mudanças estruturais devem ser criadas em uma nova migration numerada.
+
+Veja [docs/DATABASE.md](docs/DATABASE.md).
+
+## Execução local
+
+### Pré-requisitos
+
+- Node.js compatível com o projeto;
+- MySQL 8;
+- npm;
+- banco local configurado.
+
+### Instalação
+
+```powershell
 npm.cmd install --prefix backend
 npm.cmd install --prefix frontend
 ```
 
-Crie os arquivos locais de ambiente no PowerShell:
+### Executar frontend e backend
 
 ```powershell
-Copy-Item backend/.env.example backend/.env
-Copy-Item frontend/.env.example frontend/.env
+npm.cmd run dev
 ```
 
-Configure ao menos as credenciais `DB_*`. Não versione arquivos `.env`.
-
-## Execução
+Ou separadamente:
 
 ```powershell
-# frontend e backend juntos
-npm.cmd run dev
-
-# ou separadamente
 npm.cmd run dev --prefix backend
 npm.cmd run dev --prefix frontend
 ```
 
-- Frontend: http://localhost:5173
-- API: http://localhost:3000/api
-- Saúde: http://localhost:3000/api/health
-
-Durante a Fase 1 a API continua disponível mesmo se o banco ainda não tiver sido criado, exibindo um aviso no terminal. Operações futuras de dados exigirão a conexão.
-
-## Qualidade
-
-```powershell
-npm.cmd test
-npm.cmd run build
-```
-
-## Segurança de dependências
-
-O frontend utiliza React Router DOM 7.18.2, versão estável mais recente publicada no npm durante esta revisão. O audit aponta o advisory `GHSA-qwww-vcr4-c8h2`, restrito oficialmente às APIs RSC instáveis; esta SPA opera em modo declarativo com `BrowserRouter` e não utiliza RSC. A correção existe em `react-router` 8.3.0, mas a versão correspondente de `react-router-dom` ainda não está publicada no npm. O risco residual deve ser acompanhado, e a atualização será feita quando houver uma versão DOM corrigida e instalável, sem `npm audit fix --force` automático.
-
 ## Variáveis de ambiente
 
-Consulte os arquivos `.env.example`. O `JWT_SECRET` será obrigatório quando a autenticação for implementada na Fase 3. Credenciais de e-mail também poderão permanecer vazias no desenvolvimento local.
+Nunca versione `.env` real.
+
+Exemplo conceitual para o backend em desenvolvimento:
+
+```env
+NODE_ENV=development
+PORT=3000
+FRONTEND_URL=http://localhost:5173
+
+DB_HOST=localhost
+DB_PORT=3306
+DB_USER=<usuario>
+DB_PASSWORD=<segredo>
+DB_NAME=barbearia_agendamento
+DB_CONNECTION_LIMIT=10
+
+JWT_SECRET=<segredo-longo-e-aleatorio>
+JWT_EXPIRES_IN=15m
+JWT_ISSUER=barbearia-api
+JWT_AUDIENCE=barbearia-web
+JWT_REVOCATION_CLEANUP_MINUTES=60
+
+BREVO_API_KEY=<segredo>
+EMAIL_FROM=<remetente-verificado>
+EMAIL_FROM_NAME=Elite Barbearia 081
+```
+
+Em produção na Railway:
+
+```env
+TRUST_PROXY=1
+```
+
+Frontend em desenvolvimento:
+
+```env
+VITE_API_URL=http://localhost:3000/api
+```
+
+Em produção na Vercel:
+
+```env
+VITE_API_URL=/api
+```
+
+Mais detalhes: [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
+
+## Testes e qualidade
+
+A estratégia do projeto prioriza testes focados durante alterações e validação completa em marcos importantes.
+
+```powershell
+npm.cmd test --prefix backend
+npm.cmd test --prefix frontend
+npm.cmd run build --prefix frontend
+npm.cmd run lint -- --max-warnings=0
+npm.cmd run format:check
+npm.cmd run migrate:status --prefix backend
+```
+
+Também é obrigatório revisar:
+
+```powershell
+git diff --check
+git status --short
+```
+
+Os testes de integração que alteram dados devem usar exclusivamente o banco isolado:
+
+```text
+barbearia_agendamento_test
+```
+
+Nunca devem utilizar o banco de desenvolvimento ou produção.
+
+## Segurança operacional
+
+Não devem ser versionados ou publicados:
+
+- `.env` reais;
+- senhas;
+- hashes de senha;
+- JWTs;
+- API keys;
+- credenciais de banco;
+- dumps com dados reais;
+- tokens de recuperação;
+- logs contendo segredos.
+
+## Deploy
+
+### Frontend
+
+- Vercel;
+- Root Directory: `frontend`;
+- build Vite;
+- `VITE_API_URL=/api`;
+- rewrite `/api/*` antes do fallback SPA.
+
+### Backend
+
+- Railway;
+- Root Directory: `backend`;
+- build via Dockerfile;
+- API pública na porta fornecida pelo ambiente;
+- MySQL acessado pela rede privada da Railway.
+
+Endpoints operacionais:
+
+```text
+GET /api/health
+GET /api/ready
+```
+
+`health` confirma que o processo está respondendo. `ready` confirma também as pré-condições necessárias de banco, schema e configuração.
+
+## Documentação
+
+- [Arquitetura](docs/ARCHITECTURE.md)
+- [Banco de dados](docs/DATABASE.md)
+- [API](docs/API.md)
+- [Autenticação](docs/AUTHENTICATION.md)
+- [Segurança](docs/SECURITY.md)
+- [Agendamento](docs/SCHEDULING.md)
+- [Planos](docs/PLANS.md)
+- [Comissões](docs/COMMISSIONS.md)
+- [Configuração](docs/CONFIGURATION.md)
+- [Deploy](docs/DEPLOY.md)
+- [Operações](docs/OPERATIONS.md)
+- [Backup e restauração](docs/BACKUP-RESTORE.md)
+- [Testes](docs/TESTING.md)
+- [Troubleshooting](docs/TROUBLESHOOTING.md)
+- [Proteção de dados](docs/DATA-PROTECTION.md)
+- [Roadmap](docs/ROADMAP.md)
+- [Portfólio](docs/PORTFOLIO.md)
+
+Histórico de marcos: [CHANGELOG.md](CHANGELOG.md).
+
+## Direitos autorais
+
+Este projeto é software proprietário disponibilizado publicamente para demonstração técnica, portfólio e avaliação. A publicação do código-fonte não concede licença open source nem autorização geral para reutilização, modificação, redistribuição ou exploração comercial.
+
+Consulte [LICENSE](LICENSE) e [NOTICE.md](NOTICE.md).
 
 ## Roadmap
 
-- Fase 1: estrutura inicial (atual)
-- Fase 2: schema, migrations, índices e seed
-- Fase 3: autenticação e autorização
-- Fases seguintes: catálogo, disponibilidade, agendamentos e painéis por perfil
+A versão atual atende uma única barbearia. Uma evolução futura para multi-barbearia/SaaS exigirá isolamento por tenant, vínculo entre usuários e estabelecimentos, papéis por barbearia, administração da plataforma e testes rigorosos de isolamento.
 
-## Banco de dados
-
-As migrations, seed e criação segura do primeiro administrador estão documentados em `backend/src/database/README.md`. O runner nunca cria ou apaga automaticamente o banco configurado.
-
-## Autenticação
-
-A API possui cadastro de clientes, login, consulta da sessão, logout com revogação, alteração e recuperação de senha. JWTs usam HS256, expiração curta, `issuer`, `audience`, versão de autenticação e `jti`. O middleware sempre consulta o usuário ativo no banco.
-
-Antes de iniciar a API, configure um `JWT_SECRET` aleatório com no mínimo 32 caracteres e use `JWT_EXPIRES_IN=15m`. Não reutilize o placeholder do `.env.example` e nunca versione o `.env`.
-
-## Cadastros operacionais
-
-Nomes de serviços são normalizados (`trim` e espaços consecutivos) antes da validação de unicidade. URLs de foto aceitam apenas HTTPS; `http://localhost` é permitido somente em desenvolvimento. Uma evolução futura poderá marcar a senha inicial do barbeiro como temporária e exigir troca no primeiro login; essa flag não faz parte da versão atual.
-
-## Disponibilidade da agenda
-
-A consulta pública usa somente `GET /api/disponibilidade`, com `barbeiroId`, `servicoId` e
-`data` civil no formato `YYYY-MM-DD`:
-
-```text
-Cliente
-  ↓
-disponibilidadeValidator
-  ↓
-disponibilidadeController
-  ↓
-disponibilidadeService
-  ↓
-disponibilidadeRepository
-  ↓
-domain/availability
-  ↓
-buildDailyAvailability
-  ↓
-generateCandidateSlots
-  ↓
-filterUnavailableSlots
-  ↓
-Resposta no horário local
-```
-
-Os instantes são convertidos para UTC internamente, mas a resposta pública contém somente o
-horário local do fuso configurado para a barbearia. Os candidatos começam em uma grade fixa de
-15 minutos e exigem antecedência mínima de 30 minutos. A duração exibida é a duração real do
-serviço; o intervalo técnico é acrescentado apenas ao período interno usado para conflitos.
-
-A consulta é informativa e não reserva um horário. A futura criação ou alteração de um
-agendamento deverá iniciar uma transação `READ COMMITTED`, bloquear a linha do barbeiro e
-repetir todas as validações antes da escrita. O teste de contenção atual comprova somente que
-validações transacionais do mesmo barbeiro são serializadas; a garantia contra dupla inserção
-pertence à Fase 6. Não existe reserva temporária de slot nesta versão.
-
-O buffer atual vem de `configuracoes.intervalo_entre_atendimentos_minutos`. Agendamentos
-existentes ainda não preservam o buffer vigente quando foram criados, portanto mudar a
-configuração pode alterar a interpretação histórica da ocupação. Antes da Fase 6 deverá ser
-reavaliada uma futura coluna `buffer_minutos`, criada por nova migration sem modificar as já
-aplicadas.
-
-A rota possui rate limit próprio de 60 requisições por minuto por IP e responde com
-`Cache-Control: no-store`. O contador em memória atende somente uma instância; implantação
-horizontal deverá usar Redis ou armazenamento compartilhado equivalente.
-
-## Arquitetura inicial
-
-O navegador acessa a SPA React, que futuramente consumirá `/api` com Axios. A API aplica cabeçalhos seguros, CORS e parsing limitado antes de encaminhar requisições às rotas. Erros passam por um middleware único. O pool MySQL é compartilhado e usa conexões assíncronas; repositories e regras de negócio serão introduzidos quando houver domínio persistido.
-
-## Resiliência e observabilidade
-
-A API aceita `X-Request-Id` com até 64 caracteres ASCII seguros. Valores ausentes ou inválidos
-são substituídos por UUID, e o identificador efetivo sempre retorna no header da resposta. Ele
-correlaciona logs durante a requisição, mas ainda não é persistido no histórico. Uma migration
-futura específica poderá adicionar correlation ID sem modificar migrations aplicadas.
-
-Logs operacionais usam estrutura com allowlist e podem conter request ID, IDs técnicos, operação,
-código do erro, tentativa e duração. Senhas, hashes de senha, JWTs, tokens de recuperação,
-Idempotency-Key original, bodies completos, observações, e-mail, telefone e credenciais do banco
-nunca são registrados. Em produção, a saída é JSON.
-
-Criação idempotente, cancelamento, reagendamento e mudança de status admitem retry apenas para
-`ER_LOCK_DEADLOCK` e `ER_LOCK_WAIT_TIMEOUT`. São no máximo três tentativas, com atraso curto e
-limitado. Cada tentativa usa nova conexão e nova transação; a tentativa anterior sempre sofre
-rollback e libera sua conexão. Ao esgotar o limite, o erro final é preservado.
-
-Erros de validação, autorização, disponibilidade, idempotência, estado, entidades ausentes,
-constraints e `ER_DUP_ENTRY` comum não são repetidos. O conflito do índice único de idempotência
-mantém seu fluxo próprio de rollback, nova leitura e comparação do payload. A mesma chave e os
-mesmos hashes são preservados durante retries transitórios; idempotência e retry de lock são
-mecanismos distintos. O backend é a autoridade para limites e validações desses contratos.
-
-## Screenshots
-
-## Interface do cliente — Fase 7
-
-A SPA oferece as rotas públicas `/`, `/login`, `/cadastro`, `/esqueci-senha`,
-`/redefinir-senha` e `/agendar`. As rotas `/agendamento/sucesso/:id`,
-`/meus-agendamentos` e `/agendamentos/:id` são exclusivas do cliente autenticado.
-
-O fluxo segue serviço, profissional, data, horário e resumo. Um rascunho versionado, sem token,
-preço ou duração, permanece por 30 minutos no `sessionStorage`. O backend continua sendo a
-autoridade para preço, disponibilidade e permissões de cancelamento e reagendamento.
-
-A identidade usa preto, grafite e dourado por design tokens. A logo oficial está centralizada em
-`frontend/src/assets/brand/elite-barbearia-081-logo.jpg` e é reutilizada pelo componente
-`BrandMark`, com dimensões explícitas, texto alternativo e fallback textual.
-
-A interface é mobile-first, possui skip link, foco visível, labels associados, feedback por
-`aria-live`, redução de movimento e diálogos acessíveis. As larguras-alvo de inspeção manual são
-320, 360, 375, 390, 768, 1024 e 1366 px. Testes frontend usam Testing Library, user-event, jsdom
-e axe-core sobre `node:test`, sem rede real.
-
-Instagram oficial: [@barbeariaelite081](https://www.instagram.com/barbeariaelite081/).
-
-Adicionar imagens após a implementação das páginas públicas e dos painéis.
+Essa evolução deve ser desenvolvida e validada em ambiente isolado, sem alterações estruturais diretamente sobre a produção atual.

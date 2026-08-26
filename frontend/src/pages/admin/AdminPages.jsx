@@ -480,14 +480,15 @@ export function AdminServicesPage() {
       nome: item.nome,
       descricao: item.descricao ?? '',
       preco: item.preco,
-      duracao_minutos: item.duracao_minutos,
+      duracao_minutos: String(item.duracao_minutos),
     });
   }
   async function save(e) {
     e.preventDefault();
     try {
-      if (editing?.id) await servicoService.update(editing.id, form);
-      else await servicoService.create(form);
+      const payload = { ...form, duracao_minutos: Number(form.duracao_minutos) };
+      if (editing?.id) await servicoService.update(editing.id, payload);
+      else await servicoService.create(payload);
       setEditing(null);
       setForm({ nome: '', descricao: '', preco: '', duracao_minutos: '' });
       setError('');
@@ -584,7 +585,7 @@ export function AdminServicesPage() {
             min="1"
             required
             value={form.duracao_minutos}
-            onChange={(e) => setForm({ ...form, duracao_minutos: Number(e.target.value) })}
+            onChange={(e) => setForm({ ...form, duracao_minutos: e.target.value })}
           />
           {error && <Alert type="error">{error}</Alert>}
           <Button type="submit">Salvar</Button>

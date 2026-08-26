@@ -34,6 +34,43 @@ const response = (data, status = 200) => ({
   config: {},
 });
 
+test('AdminServicesPage keeps an edited duration unpadded and reloads the persisted value', async () => {
+  let updatedPayload;
+  const service = {
+    id: '78',
+    nome: 'Serviço com duração editável',
+    descricao: null,
+    preco: '40.00',
+    duracao_minutos: 15,
+    ativo: true,
+  };
+  api.defaults.adapter = async (config) => {
+    if (config.method === 'put' && config.url === '/admin/servicos/78') {
+      updatedPayload = typeof config.data === 'string' ? JSON.parse(config.data) : config.data;
+      service.duracao_minutos = updatedPayload.duracao_minutos;
+      return response({ data: service });
+    }
+    return response({ data: [service], pagination: { page: 1, totalPages: 1 } });
+  };
+
+  render(React.createElement(MemoryRouter, null, React.createElement(AdminServicesPage)));
+  await screen.findByText('Serviço com duração editável');
+  fireEvent.click(screen.getByRole('button', { name: 'Editar' }));
+  let dialog = screen.getByRole('dialog');
+  const duration = within(dialog).getByLabelText('Duração em minutos');
+  assert.equal(duration.value, '15');
+  fireEvent.change(duration, { target: { value: '' } });
+  fireEvent.change(duration, { target: { value: '20' } });
+  assert.equal(duration.value, '20');
+  fireEvent.submit(within(dialog).getByRole('button', { name: 'Salvar' }).closest('form'));
+
+  await waitFor(() => assert.equal(updatedPayload?.duracao_minutos, 20));
+  await waitFor(() => assert.equal(screen.queryByRole('dialog'), null));
+  fireEvent.click(screen.getByRole('button', { name: 'Editar' }));
+  dialog = screen.getByRole('dialog');
+  assert.equal(within(dialog).getByLabelText('Duração em minutos').value, '20');
+});
+
 test.afterEach(() => {
   cleanup();
   api.defaults.adapter = originalAdapter;

@@ -34,6 +34,7 @@ let barberUserId;
 let barberId;
 let serviceId;
 let secondBarberUserId;
+let secondBarberToken;
 let secondBarberId;
 let clientAppointmentId;
 let adminAppointmentId;
@@ -88,7 +89,7 @@ test.before(async () => {
   ({ id: clientId, token: clientToken } = await addUser('cliente', 'client'));
   ({ id: otherClientId, token: otherClientToken } = await addUser('cliente', 'client2'));
   ({ id: barberUserId, token: barberToken } = await addUser('barbeiro', 'barber'));
-  ({ id: secondBarberUserId } = await addUser('barbeiro', 'barber2'));
+  ({ id: secondBarberUserId, token: secondBarberToken } = await addUser('barbeiro', 'barber2'));
   const [barberResult] = await pool.execute('INSERT INTO barbeiros(usuario_id) VALUES(?)', [
     barberUserId,
   ]);
@@ -329,6 +330,31 @@ test('admin cria confirmado e barbeiro acessa somente o próprio agendamento', a
   );
   const barberList = await api(`/barbeiro/agendamentos?data=${date}`, { token: barberToken });
   assert.equal((await barberList.json()).data[0].cliente.nome.startsWith(marker), true);
+  const upcomingBarberList = await api('/barbeiro/agendamentos?periodo=inicio', {
+    token: barberToken,
+  });
+  assert.equal(
+    (await upcomingBarberList.json()).data.some((item) => item.id === created.id),
+    true,
+  );
+  const otherBarberList = await api(`/barbeiro/agendamentos?data=${date}`, {
+    token: secondBarberToken,
+  });
+  assert.equal(
+    (await otherBarberList.json()).data.some((item) => item.id === created.id),
+    false,
+  );
+  const otherUpcomingBarberList = await api('/barbeiro/agendamentos?periodo=inicio', {
+    token: secondBarberToken,
+  });
+  assert.equal(
+    (await otherUpcomingBarberList.json()).data.some((item) => item.id === created.id),
+    false,
+  );
+  assert.equal(
+    (await api(`/barbeiro/agendamentos/${created.id}`, { token: secondBarberToken })).status,
+    403,
+  );
   const adminList = await api('/admin/agendamentos?origem=admin', { token: adminToken });
   const adminItem = (await adminList.json()).data.find((item) => item.id === created.id);
   assert.equal(adminItem.origem, 'admin');

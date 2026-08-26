@@ -13,10 +13,14 @@ import {
 import { useDocumentTitle } from '../../hooks/useDocumentTitle.js';
 import { useRemoteData } from '../../hooks/useRemoteData.js';
 import { operacionalService } from '../../services/operacionalService.js';
-const today = new Date().toISOString().slice(0, 10);
+import { civilDate } from '../../utils/dateTime.js';
+
+export const barberAgendaToday = (now = new Date()) => civilDate(now, 'America/Recife');
+
 export default function BarberAgendaPage() {
   useDocumentTitle('Minha agenda');
-  const [data, setData] = React.useState(today),
+  const [data, setData] = React.useState(() => barberAgendaToday()),
+    [view, setView] = React.useState('today'),
     [status, setStatus] = React.useState(''),
     [archived, setArchived] = React.useState(false),
     [archiveError, setArchiveError] = React.useState(''),
@@ -25,13 +29,13 @@ export default function BarberAgendaPage() {
   const state = useRemoteData(
     () =>
       operacionalService.barberAppointments({
-        data,
+        ...(view === 'upcoming' ? { periodo: 'inicio', sort: 'inicio', order: 'asc' } : { data }),
         status: status || undefined,
         arquivados: archived,
         page,
         limit: 20,
       }),
-    [data, status, archived, page],
+    [data, view, status, archived, page],
   );
   const rows = state.data?.data ?? [],
     pagination = state.data?.pagination;
@@ -53,12 +57,36 @@ export default function BarberAgendaPage() {
     <>
       <PageHeader title="Minha agenda" description="Atendimentos organizados por horário." />
       <section className="card filter-panel">
+        <div className="cluster" role="tablist" aria-label="Visualização da agenda">
+          <Button
+            aria-pressed={view === 'today'}
+            variant={view === 'today' ? 'primary' : 'secondary'}
+            onClick={() => {
+              setData(barberAgendaToday());
+              setView('today');
+              setPage(1);
+            }}
+          >
+            Hoje
+          </Button>
+          <Button
+            aria-pressed={view === 'upcoming'}
+            variant={view === 'upcoming' ? 'primary' : 'secondary'}
+            onClick={() => {
+              setView('upcoming');
+              setPage(1);
+            }}
+          >
+            Próximos
+          </Button>
+        </div>
         <Input
           label="Data"
           type="date"
           value={data}
           onChange={(e) => {
             setData(e.target.value);
+            setView('day');
             setPage(1);
           }}
         />
@@ -113,6 +141,11 @@ export default function BarberAgendaPage() {
               </div>
               <h2>{item.cliente.nome}</h2>
               <p>{item.servico.nome}</p>
+              {view === 'upcoming' && (
+                <p>
+                  {item.data} · {item.horaInicio}–{item.horaFim}
+                </p>
+              )}
               <div className="cluster">
                 <Link to={`/barbeiro/agendamentos/${item.id}`}>Ver detalhes</Link>
                 {!archived && ['concluido', 'cancelado', 'ausente'].includes(item.status) && (

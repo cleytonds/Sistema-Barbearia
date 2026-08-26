@@ -6,14 +6,18 @@ import { JSDOM } from 'jsdom';
 const appointment = {
   id: '90071992547409931234',
   servico: { nome: 'Corte e barba' },
-  barbeiro: { nome: 'João' },
+  barbeiro: { nome: 'João', telefone: '81988982892' },
   data: '2026-08-15',
   horaInicio: '09:30',
   status: 'confirmado',
 };
 
-const { buildWhatsAppMessage, buildWhatsAppShareUrl, hasWhatsAppShareData } =
-  await import('../src/utils/whatsappShare.js');
+const {
+  buildWhatsAppMessage,
+  buildWhatsAppShareUrl,
+  hasWhatsAppShareData,
+  normalizeBrazilianWhatsApp,
+} = await import('../src/utils/whatsappShare.js');
 
 test('monta mensagem completa em pt-BR, preserva BIGINT string e codifica acentos', () => {
   const message = buildWhatsAppMessage(appointment, 'Barbearia São José');
@@ -25,9 +29,26 @@ test('monta mensagem completa em pt-BR, preserva BIGINT string e codifica acento
   assert.match(message, /Código do agendamento: 90071992547409931234/);
   assert.match(message, /Status: Confirmado/);
   const url = buildWhatsAppShareUrl(appointment, 'Barbearia São José');
-  assert.ok(url.startsWith('https://wa.me/?text='));
-  assert.equal(url.includes('phone='), false);
+  assert.ok(url.startsWith('https://wa.me/5581988982892?text='));
   assert.equal(decodeURIComponent(url.split('?text=')[1]), message);
+});
+
+test('normaliza o WhatsApp do barbeiro associado sem misturar destinos', () => {
+  const barberA = { ...appointment, barbeiro: { nome: 'Barbeiro A', telefone: '81988982892' } };
+  const barberB = {
+    ...appointment,
+    barbeiro: { nome: 'Barbeiro B', telefone: '(81) 99268-0506' },
+  };
+  const urlA = buildWhatsAppShareUrl(barberA);
+  const urlB = buildWhatsAppShareUrl(barberB);
+
+  assert.ok(urlA.startsWith('https://wa.me/5581988982892?text='));
+  assert.ok(urlB.startsWith('https://wa.me/5581992680506?text='));
+  assert.equal(urlA.includes('5581992680506'), false);
+  assert.equal(urlB.includes('5581988982892'), false);
+  assert.equal(normalizeBrazilianWhatsApp('+55 81 99268-0506'), '5581992680506');
+  assert.equal(normalizeBrazilianWhatsApp('telefone inválido'), null);
+  assert.equal(buildWhatsAppShareUrl({ ...appointment, barbeiro: { nome: 'Sem telefone' } }), null);
 });
 
 test('não inclui dados sensíveis ou administrativos mesmo quando presentes no objeto', () => {
@@ -107,10 +128,13 @@ test('botão abre nova aba com proteção de opener, funciona por teclado e não
     React.createElement(
       ToastProvider,
       null,
-      React.createElement(WhatsAppShareButton, { agendamento: { ...appointment, data: '' } }),
+      React.createElement(WhatsAppShareButton, {
+        agendamento: { ...appointment, data: '', barbeiro: { nome: appointment.barbeiro.nome } },
+      }),
     ),
   );
   assert.equal(screen.getByRole('button', { name: /Enviar pelo WhatsApp/ }).disabled, true);
+  assert.ok(screen.getByText('WhatsApp do profissional não cadastrado.'));
   cleanup();
 
   window.open = () => null;
@@ -142,11 +166,10 @@ test('páginas do cliente exibem o componente somente após os dados carregarem'
     new URL('../src/pages/AppointmentDetailsPage.jsx', import.meta.url),
     'utf8',
   );
-  for (const source of [success, detail]) {
-    assert.match(source, /<WhatsAppShareButton agendamento=\{data\} \/>/);
-    assert.ok(source.indexOf('<WhatsAppShareButton') > source.indexOf('loading ?'));
-    assert.match(source, /hasWhatsAppShareData\(data\)/);
-  }
+  assert.match(success, /<WhatsAppShareButton agendamento=\{data\} \/>/);
+  assert.ok(success.indexOf('<WhatsAppShareButton') > success.indexOf('loading ?'));
+  assert.match(success, /hasWhatsAppShareData\(data\)/);
+  assert.match(detail, /<WhatsAppShareButton agendamento=\{data\} \/>/);
 });
 
 test('sucesso mobile mostra WhatsApp no topo do card e erro da API não mostra', async () => {

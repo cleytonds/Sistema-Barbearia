@@ -5,6 +5,7 @@ import {
   buildWhatsAppShareUrl,
   DEFAULT_BARBERSHOP_NAME,
   hasWhatsAppShareData,
+  normalizeBrazilianWhatsApp,
 } from '../../utils/whatsappShare.js';
 import { Alert, Button } from '../ui/index.jsx';
 
@@ -36,6 +37,7 @@ export function WhatsAppShareButton({
   }, [nomeBarbearia]);
 
   const enabled = hasWhatsAppShareData(agendamento);
+  const barberHasWhatsApp = Boolean(normalizeBrazilianWhatsApp(agendamento?.barbeiro?.telefone));
   const share = () => {
     setOpenError(false);
     const url = buildWhatsAppShareUrl(
@@ -61,6 +63,7 @@ export function WhatsAppShareButton({
       <Button type="button" variant={variant} disabled={!enabled} onClick={share}>
         <span aria-hidden="true">◉</span> Enviar pelo WhatsApp
       </Button>
+      {!barberHasWhatsApp && <p role="status">WhatsApp do profissional não cadastrado.</p>}
       {openError && (
         <Alert type="error">
           Não foi possível abrir o WhatsApp. Verifique o bloqueio de janelas e tente novamente.

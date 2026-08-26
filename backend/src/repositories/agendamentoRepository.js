@@ -1,7 +1,7 @@
 import { pool } from '../config/database.js';
 
 const detailSelect = `
-  SELECT a.*, ub.nome AS barbeiro_nome, uc.nome AS cliente_nome,
+  SELECT a.*, ub.nome AS barbeiro_nome, ub.telefone AS barbeiro_telefone, uc.nome AS cliente_nome,
          s.nome AS servico_nome, c.fuso_horario,
          EXISTS(
            SELECT 1 FROM agendamentos_arquivados_barbeiro aa

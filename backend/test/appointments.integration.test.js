@@ -32,6 +32,7 @@ let clientId;
 let otherClientId;
 let barberUserId;
 let barberId;
+let barberPhone;
 let serviceId;
 let secondBarberUserId;
 let secondBarberToken;
@@ -62,21 +63,16 @@ async function api(path, { method = 'GET', token, body, key } = {}) {
 
 async function addUser(profile, suffix) {
   const password = await hashPassword('SenhaTeste123');
+  const phone = `81${phonePrefix}${String(++userSequence).padStart(2, '0')}`;
   const [result] = await pool.execute(
     'INSERT INTO usuarios(nome,email,telefone,senha_hash,perfil) VALUES(?,?,?,?,?)',
-    [
-      `${marker} ${suffix}`,
-      `${marker}-${suffix}@example.test`,
-      `81${phonePrefix}${String(++userSequence).padStart(2, '0')}`,
-      password,
-      profile,
-    ],
+    [`${marker} ${suffix}`, `${marker}-${suffix}@example.test`, phone, password, profile],
   );
   await grantRole(result.insertId, profile);
   const [[user]] = await pool.execute('SELECT id,auth_versao FROM usuarios WHERE id=?', [
     result.insertId,
   ]);
-  return { id: result.insertId, token: issueAccessToken(user) };
+  return { id: result.insertId, token: issueAccessToken(user), phone };
 }
 
 test.before(async () => {
@@ -88,7 +84,11 @@ test.before(async () => {
   ({ id: adminId, token: adminToken } = await addUser('admin', 'admin'));
   ({ id: clientId, token: clientToken } = await addUser('cliente', 'client'));
   ({ id: otherClientId, token: otherClientToken } = await addUser('cliente', 'client2'));
-  ({ id: barberUserId, token: barberToken } = await addUser('barbeiro', 'barber'));
+  ({
+    id: barberUserId,
+    token: barberToken,
+    phone: barberPhone,
+  } = await addUser('barbeiro', 'barber'));
   ({ id: secondBarberUserId, token: secondBarberToken } = await addUser('barbeiro', 'barber2'));
   const [barberResult] = await pool.execute('INSERT INTO barbeiros(usuario_id) VALUES(?)', [
     barberUserId,
@@ -297,13 +297,19 @@ test('mass assignment é rejeitado e listagens respeitam propriedade', async () 
   assert.ok(mineBody.data.length >= 1);
   assert.equal(typeof mineBody.data[0].podeCancelar, 'boolean');
   const listed = mineBody.data.find((item) => item.id === clientAppointmentId);
+  assert.equal(listed.barbeiro.telefone, undefined);
   const detail = (
     await (await api(`/agendamentos/${clientAppointmentId}`, { token: clientToken })).json()
   ).data;
   assert.equal(detail.podeCancelar, listed.podeCancelar);
   assert.equal(detail.podeReagendar, listed.podeReagendar);
+  assert.equal(detail.barbeiro.telefone, barberPhone);
   const others = await api('/agendamentos/meus', { token: otherClientToken });
   assert.equal((await others.json()).data.length, 0);
+  assert.equal(
+    (await api(`/agendamentos/${clientAppointmentId}`, { token: otherClientToken })).status,
+    403,
+  );
 });
 
 test('admin cria confirmado e barbeiro acessa somente o próprio agendamento', async () => {

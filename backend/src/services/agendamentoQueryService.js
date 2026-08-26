@@ -95,7 +95,9 @@ export async function detail({ id, userId, role }) {
     const barber = await appointmentRepository.findBarberByUser(userId);
     assertAssignedBarber(appointment, barber);
   }
-  const serialized = serializeAppointment(appointment, appointment.fuso_horario);
+  const serialized = serializeAppointment(appointment, appointment.fuso_horario, {
+    includeBarberPhone: role === 'cliente',
+  });
   if (role === 'barbeiro') {
     return {
       ...serialized,

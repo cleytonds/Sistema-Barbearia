@@ -14,7 +14,7 @@ import { AppError } from '../utils/AppError.js';
 import { localToUtc } from '../utils/dateTime.js';
 import { logger } from '../utils/logger.js';
 import {
-  assertClientNextDayBookingDate,
+  assertClientBookingDate,
   AVAILABILITY_MODE,
   validateAvailability,
 } from './disponibilidadeService.js';
@@ -63,7 +63,7 @@ async function createTransactional({
   if (existing) return replayResult(existing, idempotency.payloadHash, logContext);
 
   const settings = await appointmentRepository.findSettings();
-  if (clientBooking) assertClientNextDayBookingDate(payload.data, settings.fuso_horario, nowUtc);
+  if (clientBooking) assertClientBookingDate(payload.data, settings.fuso_horario, nowUtc);
   const startAt = localToUtc(`${payload.data}T${payload.horaInicio}:00`, settings.fuso_horario);
   let id;
   try {

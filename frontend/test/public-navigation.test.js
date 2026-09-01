@@ -101,6 +101,6 @@ test('link de serviço abre o agendamento com o serviço selecionado', async () 
   fireEvent.click(await screen.findByRole('radio', { name: /Profissional disponível/ }));
   fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
   const date = await screen.findByLabelText('Data');
-  assert.equal(date.min, '2026-09-01');
+  assert.equal(date.min, '2026-08-31');
   assert.equal(date.max, '2026-09-01');
 });

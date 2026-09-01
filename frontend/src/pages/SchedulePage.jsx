@@ -99,7 +99,7 @@ function ScheduleContent() {
     () =>
       configuration
         ? {
-            min: addCivilDays(civilDate(configuration.agora, configuration.fusoHorario), 1),
+            min: civilDate(configuration.agora, configuration.fusoHorario),
             max: addCivilDays(civilDate(configuration.agora, configuration.fusoHorario), 1),
           }
         : null,

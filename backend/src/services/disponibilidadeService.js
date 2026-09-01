@@ -28,17 +28,8 @@ function parseBookingDate(date, timeZone, nowUtc, maximumDays) {
   return parsed;
 }
 
-export function assertClientNextDayBookingDate(date, timeZone, nowUtc = new Date()) {
-  const parsed = parseBookingDate(date, timeZone, nowUtc, 1);
-  const nextDay = DateTime.fromJSDate(nowUtc, { zone: timeZone }).startOf('day').plus({ days: 1 });
-  if (!parsed.hasSame(nextDay, 'day')) {
-    throw new AppError(
-      'Agendamentos de clientes estão disponíveis apenas para o próximo dia.',
-      422,
-      'CLIENT_BOOKING_DATE_NOT_ALLOWED',
-    );
-  }
-  return parsed;
+export function assertClientBookingDate(date, timeZone, nowUtc = new Date()) {
+  return parseBookingDate(date, timeZone, nowUtc, 1);
 }
 
 function dayPeriod(dateTime) {

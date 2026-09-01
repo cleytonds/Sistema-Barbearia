@@ -276,11 +276,11 @@ test('criação cliente é idempotente, preserva snapshots e histórico', async 
   );
   assert.equal(Number(history.total), 1);
 
-  const today = DateTime.now().setZone(zone).toFormat('yyyy-MM-dd');
+  const yesterday = DateTime.now().setZone(zone).minus({ days: 1 }).toFormat('yyyy-MM-dd');
   const afterTomorrow = DateTime.fromISO(date, { zone }).plus({ days: 1 }).toFormat('yyyy-MM-dd');
   const fiveDaysAhead = DateTime.fromISO(date, { zone }).plus({ days: 4 }).toFormat('yyyy-MM-dd');
   for (const [invalidDate, errorCode] of [
-    [today, 'CLIENT_BOOKING_DATE_NOT_ALLOWED'],
+    [yesterday, 'INVALID_BOOKING_DATE'],
     [afterTomorrow, 'BOOKING_DATE_OUT_OF_RANGE'],
     [fiveDaysAhead, 'BOOKING_DATE_OUT_OF_RANGE'],
   ]) {

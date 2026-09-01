@@ -15,7 +15,7 @@ import {
   timeToMinutes,
 } from '../src/domain/availability/workingWindow.js';
 import {
-  assertClientNextDayBookingDate,
+  assertClientBookingDate,
   parseBookingDate,
 } from '../src/services/disponibilidadeService.js';
 
@@ -112,21 +112,38 @@ test('antecedência máxima é inclusiva quando comparada como datas civis', () 
   );
 });
 
-test('cliente só agenda no próximo dia civil em America/Recife', () => {
+test('cliente agenda hoje ou amanhã civil em America/Recife', () => {
   const nowUtc = new Date('2026-09-01T02:50:00.000Z');
   const zone = 'America/Recife';
   assert.equal(
-    assertClientNextDayBookingDate('2026-09-01', zone, nowUtc).toFormat('yyyy-MM-dd'),
+    assertClientBookingDate('2026-08-31', zone, nowUtc).toFormat('yyyy-MM-dd'),
+    '2026-08-31',
+  );
+  assert.equal(
+    assertClientBookingDate('2026-09-01', zone, nowUtc).toFormat('yyyy-MM-dd'),
     '2026-09-01',
   );
-  for (const date of ['2026-08-31', '2026-09-02', '2026-09-05']) {
+  for (const [date, code] of [
+    ['2026-08-30', 'INVALID_BOOKING_DATE'],
+    ['2026-09-02', 'BOOKING_DATE_OUT_OF_RANGE'],
+    ['2026-09-05', 'BOOKING_DATE_OUT_OF_RANGE'],
+  ]) {
     assert.throws(
-      () => assertClientNextDayBookingDate(date, zone, nowUtc),
-      (error) =>
-        error.code === 'CLIENT_BOOKING_DATE_NOT_ALLOWED' ||
-        error.code === 'BOOKING_DATE_OUT_OF_RANGE',
+      () => assertClientBookingDate(date, zone, nowUtc),
+      (error) => error.code === code,
     );
   }
+});
+
+test('janela do cliente respeita a virada de ano em America/Recife', () => {
+  const nowUtc = new Date('2027-01-01T02:50:00.000Z');
+  const zone = 'America/Recife';
+  assert.equal(assertClientBookingDate('2026-12-31', zone, nowUtc).day, 31);
+  assert.equal(assertClientBookingDate('2027-01-01', zone, nowUtc).day, 1);
+  assert.throws(
+    () => assertClientBookingDate('2027-01-02', zone, nowUtc),
+    (error) => error.code === 'BOOKING_DATE_OUT_OF_RANGE',
+  );
 });
 
 function availabilityAt({
@@ -215,6 +232,18 @@ test('horário exatamente no limite de 30 minutos é permitido', () => {
   const slots = availabilityAt({ nowUtc: new Date('2026-08-15T11:30:00.000Z') });
   assert.equal(
     slots.some((slot) => slot.inicioLocal === '09:00'),
+    true,
+  );
+});
+
+test('horários passados hoje são removidos e horários futuros permanecem', () => {
+  const slots = availabilityAt({ nowUtc: new Date('2026-08-15T17:30:00.000Z') });
+  assert.equal(
+    slots.some((slot) => slot.inicioLocal === '14:00'),
+    false,
+  );
+  assert.equal(
+    slots.some((slot) => slot.inicioLocal === '15:00'),
     true,
   );
 });

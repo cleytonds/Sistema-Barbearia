@@ -190,12 +190,18 @@ test('servicos: unicidade real, edição, paginação e validação estrita', as
   assert.deepEqual(race.map((x) => x.response.status).sort(), [201, 409]);
   let r = await request(`/admin/servicos/${serviceId}`, {
     method: 'PUT',
-    body: { nome: name, preco: '44.90', duracao_minutos: 50 },
+    body: {
+      nome: name,
+      descricao: 'Corte masculino tradicional ou moderno.',
+      preco: '25',
+      duracao_minutos: 20,
+    },
   });
   assert.equal(r.status, 200);
   const updated = (await r.json()).data;
-  assert.equal(Number(updated.preco), 44.9);
-  assert.equal(updated.duracao_minutos, 50);
+  assert.equal(Number(updated.preco), 25);
+  assert.equal(updated.duracao_minutos, 20);
+  assert.equal(updated.descricao, 'Corte masculino tradicional ou moderno.');
   assert.equal(
     (
       await request(`/admin/servicos/${serviceId}`, {

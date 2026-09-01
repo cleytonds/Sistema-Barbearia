@@ -40,7 +40,7 @@ test('AdminServicesPage keeps an edited duration unpadded and reloads the persis
     id: '78',
     nome: 'Serviço com duração editável',
     descricao: null,
-    preco: '40.00',
+    preco: 25,
     duracao_minutos: 15,
     ativo: true,
   };
@@ -62,9 +62,14 @@ test('AdminServicesPage keeps an edited duration unpadded and reloads the persis
   fireEvent.change(duration, { target: { value: '' } });
   fireEvent.change(duration, { target: { value: '20' } });
   assert.equal(duration.value, '20');
+  fireEvent.change(within(dialog).getByLabelText(/Descri/), {
+    target: { value: 'Corte masculino tradicional ou moderno.' },
+  });
   fireEvent.submit(within(dialog).getByRole('button', { name: 'Salvar' }).closest('form'));
 
   await waitFor(() => assert.equal(updatedPayload?.duracao_minutos, 20));
+  assert.equal(updatedPayload.preco, '25');
+  assert.equal(updatedPayload.descricao, 'Corte masculino tradicional ou moderno.');
   await waitFor(() => assert.equal(screen.queryByRole('dialog'), null));
   fireEvent.click(screen.getByRole('button', { name: 'Editar' }));
   dialog = screen.getByRole('dialog');

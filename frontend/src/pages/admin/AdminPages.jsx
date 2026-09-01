@@ -479,7 +479,7 @@ export function AdminServicesPage() {
     setForm({
       nome: item.nome,
       descricao: item.descricao ?? '',
-      preco: item.preco,
+      preco: parsePrice(item.preco),
       duracao_minutos: String(item.duracao_minutos),
     });
   }

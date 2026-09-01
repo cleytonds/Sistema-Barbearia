@@ -13,7 +13,11 @@ import * as historyRepository from '../repositories/historicoAgendamentoReposito
 import { AppError } from '../utils/AppError.js';
 import { localToUtc } from '../utils/dateTime.js';
 import { logger } from '../utils/logger.js';
-import { AVAILABILITY_MODE, validateAvailability } from './disponibilidadeService.js';
+import {
+  assertClientNextDayBookingDate,
+  AVAILABILITY_MODE,
+  validateAvailability,
+} from './disponibilidadeService.js';
 import { decidirCobertura } from './coberturaPlanoService.js';
 import { reservarUso } from './usoPlanoService.js';
 
@@ -38,6 +42,7 @@ async function createTransactional({
   key,
   nowUtc,
   requestId,
+  clientBooking = false,
 }) {
   const startedAt = Date.now();
   const idempotency = buildIdempotency({
@@ -58,6 +63,7 @@ async function createTransactional({
   if (existing) return replayResult(existing, idempotency.payloadHash, logContext);
 
   const settings = await appointmentRepository.findSettings();
+  if (clientBooking) assertClientNextDayBookingDate(payload.data, settings.fuso_horario, nowUtc);
   const startAt = localToUtc(`${payload.data}T${payload.horaInicio}:00`, settings.fuso_horario);
   let id;
   try {
@@ -174,6 +180,7 @@ export function createClient({ userId, payload, key, nowUtc = new Date(), reques
     key,
     nowUtc,
     requestId,
+    clientBooking: true,
   });
 }
 

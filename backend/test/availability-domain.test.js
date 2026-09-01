@@ -14,7 +14,10 @@ import {
   fitsWorkingWindow,
   timeToMinutes,
 } from '../src/domain/availability/workingWindow.js';
-import { parseBookingDate } from '../src/services/disponibilidadeService.js';
+import {
+  assertClientNextDayBookingDate,
+  parseBookingDate,
+} from '../src/services/disponibilidadeService.js';
 
 const activeDay = {
   ativo: true,
@@ -107,6 +110,23 @@ test('antecedência máxima é inclusiva quando comparada como datas civis', () 
     () => parseBookingDate('2026-09-01', 'America/Recife', nowUtc, 30),
     (error) => error.code === 'BOOKING_DATE_OUT_OF_RANGE',
   );
+});
+
+test('cliente só agenda no próximo dia civil em America/Recife', () => {
+  const nowUtc = new Date('2026-09-01T02:50:00.000Z');
+  const zone = 'America/Recife';
+  assert.equal(
+    assertClientNextDayBookingDate('2026-09-01', zone, nowUtc).toFormat('yyyy-MM-dd'),
+    '2026-09-01',
+  );
+  for (const date of ['2026-08-31', '2026-09-02', '2026-09-05']) {
+    assert.throws(
+      () => assertClientNextDayBookingDate(date, zone, nowUtc),
+      (error) =>
+        error.code === 'CLIENT_BOOKING_DATE_NOT_ALLOWED' ||
+        error.code === 'BOOKING_DATE_OUT_OF_RANGE',
+    );
+  }
 });
 
 function availabilityAt({

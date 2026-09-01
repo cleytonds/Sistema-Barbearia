@@ -12,7 +12,7 @@ Object.defineProperty(globalThis, 'navigator', { configurable: true, value: dom.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const React = await import('react');
-const { render, cleanup, screen, waitFor } = await import('@testing-library/react');
+const { fireEvent, render, cleanup, screen, waitFor } = await import('@testing-library/react');
 const { MemoryRouter } = await import('react-router-dom');
 const { AuthContext } = await import('../src/contexts/AuthContext.jsx');
 const { ToastProvider } = await import('../src/contexts/ToastContext.jsx');
@@ -82,12 +82,14 @@ test('link de serviço abre o agendamento com o serviço selecionado', async () 
     if (config.url === '/configuracoes/publicas')
       return response({
         data: {
-          agora: '2026-08-12T12:00:00.000Z',
-          fusoHorario: 'America/Sao_Paulo',
+          agora: '2026-09-01T02:50:00.000Z',
+          fusoHorario: 'America/Recife',
           antecedenciaMaximaDias: 30,
         },
       });
-    if (config.url === '/barbeiros') return response({ data: [] });
+    if (config.url === '/barbeiros') {
+      return response({ data: [{ id: '2', nome: 'Profissional disponível' }] });
+    }
     return response({ data: null });
   };
 
@@ -95,4 +97,10 @@ test('link de serviço abre o agendamento com o serviço selecionado', async () 
 
   const service = await screen.findByRole('radio', { name: /Serviço escolhido/ });
   await waitFor(() => assert.equal(service.checked, true));
+  fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
+  fireEvent.click(await screen.findByRole('radio', { name: /Profissional disponível/ }));
+  fireEvent.click(screen.getByRole('button', { name: 'Continuar' }));
+  const date = await screen.findByLabelText('Data');
+  assert.equal(date.min, '2026-09-01');
+  assert.equal(date.max, '2026-09-01');
 });

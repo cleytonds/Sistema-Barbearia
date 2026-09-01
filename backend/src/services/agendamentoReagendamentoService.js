@@ -8,7 +8,11 @@ import * as historyRepository from '../repositories/historicoAgendamentoReposito
 import { AppError } from '../utils/AppError.js';
 import { localToUtc } from '../utils/dateTime.js';
 import { logger } from '../utils/logger.js';
-import { AVAILABILITY_MODE, validateAvailability } from './disponibilidadeService.js';
+import {
+  assertClientNextDayBookingDate,
+  AVAILABILITY_MODE,
+  validateAvailability,
+} from './disponibilidadeService.js';
 import { decidirCobertura } from './coberturaPlanoService.js';
 import { atualizarUsoNoReagendamento } from './usoPlanoService.js';
 
@@ -19,6 +23,8 @@ export async function reschedule({ id, userId, role, payload, nowUtc = new Date(
       : await appointmentRepository.findByIdWithoutLock(id);
   if (!preliminary) throw new AppError('Agendamento não encontrado.', 404, 'APPOINTMENT_NOT_FOUND');
   const settings = await appointmentRepository.findSettings();
+  if (role === 'cliente')
+    assertClientNextDayBookingDate(payload.data, settings.fuso_horario, nowUtc);
   const newStartAt = localToUtc(`${payload.data}T${payload.horaInicio}:00`, settings.fuso_horario);
   const logContext = {
     requestId,

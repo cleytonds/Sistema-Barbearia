@@ -21,7 +21,7 @@ const marker = `F6-${randomUUID().slice(0, 8)}`;
 const phonePrefix = String(BigInt(`0x${marker.slice(3)}`) % 10_000_000n).padStart(7, '0');
 let userSequence = 0;
 const zone = 'America/Recife';
-const date = DateTime.now().setZone(zone).plus({ days: 7 }).toFormat('yyyy-MM-dd');
+const date = DateTime.now().setZone(zone).plus({ days: 1 }).toFormat('yyyy-MM-dd');
 const day = DateTime.fromISO(date, { zone }).weekday % 7;
 let server;
 let base;
@@ -275,6 +275,24 @@ test('criação cliente é idempotente, preserva snapshots e histórico', async 
     [original.id],
   );
   assert.equal(Number(history.total), 1);
+
+  const today = DateTime.now().setZone(zone).toFormat('yyyy-MM-dd');
+  const afterTomorrow = DateTime.fromISO(date, { zone }).plus({ days: 1 }).toFormat('yyyy-MM-dd');
+  const fiveDaysAhead = DateTime.fromISO(date, { zone }).plus({ days: 4 }).toFormat('yyyy-MM-dd');
+  for (const [invalidDate, errorCode] of [
+    [today, 'CLIENT_BOOKING_DATE_NOT_ALLOWED'],
+    [afterTomorrow, 'BOOKING_DATE_OUT_OF_RANGE'],
+    [fiveDaysAhead, 'BOOKING_DATE_OUT_OF_RANGE'],
+  ]) {
+    response = await api('/agendamentos', {
+      method: 'POST',
+      token: clientToken,
+      key: randomUUID(),
+      body: { ...payload, data: invalidDate, horaInicio: '10:00' },
+    });
+    assert.equal(response.status, 422);
+    assert.equal((await response.json()).error.code, errorCode);
+  }
 });
 
 test('mass assignment é rejeitado e listagens respeitam propriedade', async () => {

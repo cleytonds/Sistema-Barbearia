@@ -20,9 +20,10 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const React = await import('react');
 const { render, cleanup, fireEvent, screen, waitFor, within } =
   await import('@testing-library/react');
+const userEvent = (await import('@testing-library/user-event')).default;
 const { MemoryRouter, Route, Routes } = await import('react-router-dom');
 const { api } = await import('../src/api/client.js');
-const { AdminBarberDetailsPage, AdminServicesPage } =
+const { AdminBarberDetailsPage, AdminCreateAppointmentPage, AdminServicesPage } =
   await import('../src/pages/admin/AdminPages.jsx');
 
 const originalAdapter = api.defaults.adapter;
@@ -200,4 +201,43 @@ test('AdminBarberDetailsPage carrega serviços da API e salva vínculos por IDs 
   fireEvent.click(checkbox);
   fireEvent.click(screen.getByRole('button', { name: 'Salvar vínculos' }));
   await waitFor(() => assert.deepEqual(linkedIds, [91]));
+});
+
+test('AdminCreateAppointmentPage mostra horários retornados pela disponibilidade', async () => {
+  let availabilityRequested = false;
+  const requestedUrls = [];
+  api.defaults.adapter = async (config) => {
+    requestedUrls.push(config.url);
+    if (config.url === '/servicos')
+      return response({ data: [{ id: '594', nome: 'Corte infantil', ativo: true }] });
+    if (config.url === '/barbeiros')
+      return response({ data: [{ id: '159', nome: 'Profissional disponível' }] });
+    if (config.url === '/disponibilidade') {
+      availabilityRequested = true;
+      return response({
+        data: '2026-09-01',
+        horarios: [{ inicioLocal: '14:45', fimLocal: '15:15' }],
+      });
+    }
+    return response({ data: [] });
+  };
+
+  render(React.createElement(MemoryRouter, null, React.createElement(AdminCreateAppointmentPage)));
+
+  const user = userEvent.setup();
+  const serviceSelect = (await screen.findByRole('option', { name: 'Corte infantil' }))
+    .parentElement;
+  assert.equal(serviceSelect?.tagName, 'SELECT');
+  await user.selectOptions(serviceSelect, '594');
+  await waitFor(() => assert.equal(serviceSelect.value, '594'));
+  await screen.findByRole('option', { name: 'Profissional disponível' });
+  const barberSelect = screen.getByRole('option', {
+    name: 'Profissional disponível',
+  }).parentElement;
+  assert.equal(barberSelect?.tagName, 'SELECT');
+  await user.selectOptions(barberSelect, '159');
+
+  await waitFor(() => assert.equal(barberSelect.value, '159'));
+  await waitFor(() => assert.equal(availabilityRequested, true, requestedUrls.join(',')));
+  await waitFor(() => assert.ok(screen.getByRole('option', { name: '14:45' })));
 });

@@ -281,7 +281,7 @@ export function AdminCreateAppointmentPage() {
       data: form.data,
       signal: controller.signal,
     })
-      .then((response) => setSlots(response.data?.horarios ?? []))
+      .then((response) => setSlots(response.horarios ?? []))
       .catch((requestError) => {
         if (!controller.signal.aborted) setError(requestError.message ?? msg(requestError));
       });

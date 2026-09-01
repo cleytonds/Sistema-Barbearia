@@ -170,7 +170,9 @@ test('AdminBarberDetailsPage carrega serviços da API e salva vínculos por IDs 
         },
       });
     }
-    if (config.url === '/admin/barbeiros/158/servicos') return response({ data: [] });
+    if (config.url === '/admin/barbeiros/158/servicos') {
+      return response({ data: [{ id: '90', nome: 'Serviço antigo', ativo: false }] });
+    }
     if (config.url === '/servicos') {
       return response({
         data: [{ id: '91', nome: 'Serviço novo da API', ativo: true }],

@@ -727,7 +727,15 @@ export function AdminBarberDetailsPage() {
   const [selected, setSelected] = useState([]),
     [message, setMessage] = useState(''),
     [form, setForm] = useState(null);
-  useEffect(() => setSelected((linked.data?.data ?? []).map((x) => String(x.id))), [linked.data]);
+  useEffect(() => {
+    if (!all.data) return;
+    const activeServiceIds = new Set((all.data.data ?? []).map((service) => String(service.id)));
+    setSelected(
+      (linked.data?.data ?? [])
+        .map((service) => String(service.id))
+        .filter((serviceId) => activeServiceIds.has(serviceId)),
+    );
+  }, [all.data, linked.data]);
   useEffect(() => {
     if (profile.data?.data) {
       const value = profile.data.data;
@@ -743,7 +751,11 @@ export function AdminBarberDetailsPage() {
   }, [profile.data]);
   async function sync() {
     try {
-      await barbeiroService.syncServices(id, selected.map(Number));
+      const activeServiceIds = new Set((all.data?.data ?? []).map((service) => String(service.id)));
+      await barbeiroService.syncServices(
+        id,
+        selected.filter((serviceId) => activeServiceIds.has(serviceId)).map(Number),
+      );
       setMessage('Vínculos atualizados.');
       linked.reload();
     } catch (e) {
@@ -845,7 +857,9 @@ export function AdminBarberDetailsPage() {
                 {s.nome}
               </label>
             ))}
-            <Button onClick={sync}>Salvar vínculos</Button>
+            <Button disabled={all.loading || linked.loading} onClick={sync}>
+              Salvar vínculos
+            </Button>
             {message && <Alert>{message}</Alert>}
           </section>
           <Link to={`/admin/jornadas?barbeiroId=${id}`}>Editar jornada</Link>

@@ -937,3 +937,57 @@ test('barbeiro inicia antecipadamente somente o próximo atendimento elegível',
   );
   assert.equal(Number(commissionBefore.total), 0);
 });
+
+test('cancelamento libera imediatamente a disponibilidade e permite nova reserva', async () => {
+  await pool.execute(
+    `UPDATE horarios_funcionamento SET hora_inicio='09:00',hora_fim='19:00',
+    intervalo_inicio=NULL,intervalo_fim=NULL,ativo=TRUE WHERE dia_semana=?`,
+    [day],
+  );
+  await pool.execute(
+    `UPDATE horarios_trabalho SET hora_inicio='09:00',hora_fim='19:00',
+    intervalo_inicio=NULL,intervalo_fim=NULL,ativo=TRUE WHERE barbeiro_id=? AND dia_semana=?`,
+    [barberId, day],
+  );
+  const payload = { barbeiroId: barberId, servicoId: serviceId, data: date, horaInicio: '15:00' };
+  let response = await api('/agendamentos', {
+    method: 'POST',
+    token: clientToken,
+    body: payload,
+    key: `${marker}-cancel-release-client-a`,
+  });
+  assert.equal(response.status, 201);
+  const appointment = (await response.json()).data;
+
+  response = await api(
+    `/disponibilidade?barbeiroId=${barberId}&servicoId=${serviceId}&data=${date}`,
+  );
+  assert.equal(
+    (await response.json()).horarios.some((slot) => slot.inicioLocal === '15:00'),
+    false,
+  );
+
+  response = await api(`/admin/agendamentos/${appointment.id}/cancelar`, {
+    method: 'PUT',
+    token: adminToken,
+    body: { motivo: 'Cancelamento de teste', responsabilidade: 'barbearia' },
+  });
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).data.status, 'cancelado');
+
+  response = await api(
+    `/disponibilidade?barbeiroId=${barberId}&servicoId=${serviceId}&data=${date}`,
+  );
+  assert.equal(
+    (await response.json()).horarios.some((slot) => slot.inicioLocal === '15:00'),
+    true,
+  );
+
+  response = await api('/agendamentos', {
+    method: 'POST',
+    token: otherClientToken,
+    body: payload,
+    key: `${marker}-cancel-release-client-b`,
+  });
+  assert.equal(response.status, 201);
+});

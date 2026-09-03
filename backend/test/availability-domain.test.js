@@ -259,11 +259,16 @@ test('bloqueios apenas encostados antes ou depois do slot não conflitam', () =>
   );
 });
 
-test('horário exatamente no limite de 30 minutos é permitido', () => {
-  const slots = availabilityAt({ nowUtc: new Date('2026-08-15T11:30:00.000Z') });
+test('horário com cinco minutos de antecedência é permitido e com menos é bloqueado', () => {
+  const slots = availabilityAt({ nowUtc: new Date('2026-08-15T11:55:00.000Z') });
   assert.equal(
     slots.some((slot) => slot.inicioLocal === '09:00'),
     true,
+  );
+  const tooSoon = availabilityAt({ nowUtc: new Date('2026-08-15T11:56:00.000Z') });
+  assert.equal(
+    tooSoon.some((slot) => slot.inicioLocal === '09:00'),
+    false,
   );
 });
 

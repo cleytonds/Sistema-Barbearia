@@ -440,8 +440,25 @@ test('horários globais validam semana e preservam estado após erros', async ()
   assert.equal(after.find((x) => x.dia_semana === 1).hora_inicio, '09:00:00');
 });
 
-test('jornada respeita funcionamento, pausas e rollback', async () => {
-  const valid = barberWeek();
+test('jornada respeita funcionamento e intervalos próprios', async () => {
+  const businessHours = Array.from({ length: 7 }, (_, diaSemana) => ({
+    diaSemana,
+    horaInicio: '08:00',
+    horaFim: '20:00',
+    intervaloInicio: '12:00',
+    intervaloFim: '14:00',
+    ativo: true,
+  }));
+  assert.equal(
+    (
+      await request('/admin/horarios-funcionamento', {
+        method: 'PUT',
+        body: { dias: businessHours },
+      })
+    ).status,
+    200,
+  );
+  const valid = barberWeek({ 1: { horaInicio: '09:00', horaFim: '19:00' } });
   assert.equal(
     (
       await request(`/admin/barbeiros/${barber.id}/horarios`, {
@@ -451,13 +468,38 @@ test('jornada respeita funcionamento, pausas e rollback', async () => {
     ).status,
     200,
   );
+  assert.equal(
+    (
+      await request(`/admin/barbeiros/${barber.id}/horarios`, {
+        method: 'PUT',
+        body: {
+          dias: barberWeek({
+            1: {
+              horaInicio: '09:00',
+              horaFim: '19:00',
+              intervaloInicio: '12:00',
+              intervaloFim: '13:00',
+            },
+            2: {
+              horaInicio: '10:00',
+              horaFim: '20:00',
+              intervaloInicio: '15:00',
+              intervaloFim: '16:30',
+            },
+          }),
+        },
+      })
+    ).status,
+    200,
+  );
   const invalid = [
-    barberWeek({ 1: { horaInicio: '08:30' } }),
-    barberWeek({ 1: { horaFim: '18:30' } }),
-    barberWeek({ 0: { ativo: true } }),
+    barberWeek({ 1: { horaInicio: '07:00', horaFim: '19:00' } }),
+    barberWeek({ 1: { horaInicio: '09:00', horaFim: '21:00' } }),
+    barberWeek({
+      1: { horaInicio: '09:00', horaFim: '19:00', intervaloInicio: '18:00', intervaloFim: '20:00' },
+    }),
     barberWeek({ 1: { intervaloFim: null } }),
     barberWeek({ 1: { intervaloInicio: '08:00', intervaloFim: '09:00' } }),
-    barberWeek({ 1: { intervaloInicio: null, intervaloFim: null } }),
     valid.slice(0, 6),
   ];
   for (const dias of invalid)
@@ -466,15 +508,6 @@ test('jornada respeita funcionamento, pausas e rollback', async () => {
         .status,
       422,
     );
-  assert.equal(
-    (
-      await request(`/admin/barbeiros/${barber.id}/horarios`, {
-        method: 'PUT',
-        body: { dias: barberWeek({ 1: { intervaloInicio: '11:30', intervaloFim: '13:30' } }) },
-      })
-    ).status,
-    200,
-  );
   await request(`/admin/barbeiros/${barber.id}/status`, {
     method: 'PATCH',
     body: { ativo: false },

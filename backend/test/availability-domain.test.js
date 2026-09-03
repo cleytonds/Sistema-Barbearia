@@ -146,6 +146,37 @@ test('janela do cliente respeita a virada de ano em America/Recife', () => {
   );
 });
 
+test('disponibilidade respeita jornada e intervalo próprio do barbeiro', () => {
+  const slots = buildDailyAvailability({
+    date: '2026-08-15',
+    timeZone: 'America/Recife',
+    businessHours: {
+      ativo: true,
+      hora_inicio: '08:00:00',
+      hora_fim: '20:00:00',
+      intervalo_inicio: null,
+      intervalo_fim: null,
+    },
+    barberHours: {
+      ativo: true,
+      hora_inicio: '09:00:00',
+      hora_fim: '19:00:00',
+      intervalo_inicio: '12:00:00',
+      intervalo_fim: '13:00:00',
+    },
+    durationMinutes: 30,
+    bufferMinutes: 0,
+    nowUtc: new Date('2026-08-14T12:00:00.000Z'),
+    blocks: [],
+    appointments: [],
+  });
+  const starts = slots.map((slot) => slot.inicioLocal);
+  for (const unavailable of ['08:00', '08:30', '12:00', '12:30', '19:00', '19:30'])
+    assert.equal(starts.includes(unavailable), false);
+  for (const available of ['09:00', '11:30', '13:00', '18:30'])
+    assert.equal(starts.includes(available), true);
+});
+
 function availabilityAt({
   durationMinutes = 30,
   bufferMinutes = 0,

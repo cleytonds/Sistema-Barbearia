@@ -63,18 +63,11 @@ export async function updateBarberHours(id, days) {
     const map = new Map(global.map((day) => [day.dia_semana, day]));
     for (const day of days) {
       const business = map.get(day.diaSemana);
-      const coversBreak =
-        !business?.intervalo_inicio ||
-        (day.intervaloInicio &&
-          day.intervaloFim &&
-          minutes(day.intervaloInicio) <= minutes(business.intervalo_inicio) &&
-          minutes(day.intervaloFim) >= minutes(business.intervalo_fim));
       if (
         day.ativo &&
         (!business?.ativo ||
           minutes(day.horaInicio) < minutes(business.hora_inicio) ||
-          minutes(day.horaFim) > minutes(business.hora_fim) ||
-          !coversBreak)
+          minutes(day.horaFim) > minutes(business.hora_fim))
       )
         throw new AppError('Jornada fora do funcionamento.', 422, 'BUSINESS_RULE_VIOLATION');
       await connection.execute(

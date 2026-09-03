@@ -485,6 +485,21 @@ h3 {
 .schedule-page .card {
   padding: clamp(1.25rem, 2.5vw, 2rem);
 }
+.punctuality-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  border-color: var(--color-brand-400);
+  background: var(--color-surface-raised);
+}
+.punctuality-notice p {
+  margin: 0;
+}
+.punctuality-notice__icon {
+  color: var(--color-brand-400);
+  font-size: 1.25rem;
+  line-height: 1.5;
+}
 .schedule-success__share p {
   margin: 0;
 }

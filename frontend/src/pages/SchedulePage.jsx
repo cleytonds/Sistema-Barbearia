@@ -343,6 +343,16 @@ function ScheduleContent() {
               <strong>Preço informativo:</strong> {service && formatMoney(service.preco)}
             </p>
           </Card>
+          <Card className="punctuality-notice" role="status">
+            <span className="punctuality-notice__icon" aria-hidden="true">
+              ◷
+            </span>
+            <p>
+              <strong>Importante:</strong> Chegue com <strong>5 minutos de antecedência</strong> ao
+              seu horário. Isso ajuda a manter os atendimentos organizados e evita atrasos nos
+              próximos agendamentos.
+            </p>
+          </Card>
           <Textarea
             label="Observações (opcional)"
             maxLength="1000"

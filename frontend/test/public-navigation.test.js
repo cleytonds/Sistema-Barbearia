@@ -17,6 +17,7 @@ const { MemoryRouter } = await import('react-router-dom');
 const { AuthContext } = await import('../src/contexts/AuthContext.jsx');
 const { ToastProvider } = await import('../src/contexts/ToastContext.jsx');
 const { api } = await import('../src/api/client.js');
+const { schedulingStorage } = await import('../src/utils/schedulingStorage.js');
 const HomePage = (await import('../src/pages/HomePage.jsx')).default;
 const SchedulePage = (await import('../src/pages/SchedulePage.jsx')).default;
 
@@ -103,4 +104,39 @@ test('link de serviço abre o agendamento com o serviço selecionado', async () 
   const date = await screen.findByLabelText('Data');
   assert.equal(date.min, '2026-08-31');
   assert.equal(date.max, '2026-09-01');
+});
+
+test('schedule review shows the punctuality notice before observations', async () => {
+  schedulingStorage.save({
+    servicoId: '7',
+    barbeiroId: '2',
+    data: '2026-09-01',
+    horaInicio: '10:00',
+    observacoes: '',
+  });
+  api.defaults.adapter = async (config) => {
+    if (config.url === '/servicos')
+      return response({ data: [{ id: '7', nome: 'Servico escolhido', preco: '30.00' }] });
+    if (config.url === '/configuracoes/publicas')
+      return response({
+        data: { agora: '2026-09-01T02:50:00.000Z', fusoHorario: 'America/Recife' },
+      });
+    if (config.url === '/barbeiros')
+      return response({ data: [{ id: '2', nome: 'Profissional disponivel' }] });
+    if (config.url === '/disponibilidade')
+      return response({ horarios: [{ inicioLocal: '10:00', fimLocal: '10:30' }] });
+    return response({ data: null });
+  };
+
+  renderPublic(React.createElement(SchedulePage), '/agendar');
+
+  const notice = await screen.findByRole('status');
+  assert.match(
+    notice.textContent,
+    /Importante: Chegue com 5 minutos de antecedência ao seu horário\. Isso ajuda a manter os atendimentos organizados e evita atrasos nos próximos agendamentos\./,
+  );
+  assert.ok(
+    notice.compareDocumentPosition(screen.getByLabelText('Observações (opcional)')) &
+      Node.DOCUMENT_POSITION_FOLLOWING,
+  );
 });

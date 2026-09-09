@@ -59,9 +59,9 @@ test('janela efetiva é a interseção das jornadas e considera pausas', () => {
   assert.equal(crossesPause({ start: 840, end: 910 }, window.pauses), true);
 });
 
-test('candidatos usam passos de 15 minutos sem duplicação', () => {
+test('candidatos usam passos de cinco minutos sem duplicação', () => {
   const slots = generateCandidateSlots({ startMinute: 540, endMinute: 600 });
-  assert.deepEqual(slots, [540, 555, 570, 585]);
+  assert.deepEqual(slots, [540, 545, 550, 555, 560, 565, 570, 575, 580, 585, 590, 595]);
   assert.equal(new Set(slots).size, slots.length);
 });
 
@@ -177,6 +177,38 @@ test('disponibilidade respeita jornada e intervalo próprio do barbeiro', () => 
     assert.equal(starts.includes(available), true);
 });
 
+test('horário atual é disponível na grade de cinco minutos e conflito o remove', () => {
+  const schedule = {
+    ativo: true,
+    hora_inicio: '08:00:00',
+    hora_fim: '09:00:00',
+    intervalo_inicio: null,
+    intervalo_fim: null,
+  };
+  const input = {
+    date: '2026-08-15',
+    timeZone: 'America/Recife',
+    businessHours: schedule,
+    barberHours: schedule,
+    durationMinutes: 10,
+    bufferMinutes: 0,
+    nowUtc: new Date('2026-08-15T11:10:00.000Z'),
+    blocks: [],
+  };
+  const freeStarts = buildDailyAvailability({ ...input, appointments: [] }).map(
+    (slot) => slot.inicioLocal,
+  );
+  assert.equal(freeStarts.includes('08:10'), true);
+  assert.equal(freeStarts.includes('08:05'), false);
+  const occupiedStarts = buildDailyAvailability({
+    ...input,
+    appointments: [
+      { start: new Date('2026-08-15T11:10:00.000Z'), end: new Date('2026-08-15T11:20:00.000Z') },
+    ],
+  }).map((slot) => slot.inicioLocal);
+  assert.equal(occupiedStarts.includes('08:10'), false);
+});
+
 function availabilityAt({
   durationMinutes = 30,
   bufferMinutes = 0,
@@ -206,6 +238,15 @@ test('slots podem terminar na pausa e começar quando a pausa termina', () => {
   assert.equal(
     slots.some((slot) => slot.inicioLocal === '13:00'),
     true,
+  );
+  const tenMinuteSlots = availabilityAt({ durationMinutes: 10 });
+  assert.equal(
+    tenMinuteSlots.some((slot) => slot.inicioLocal === '11:50'),
+    true,
+  );
+  assert.equal(
+    tenMinuteSlots.some((slot) => slot.inicioLocal === '11:55'),
+    false,
   );
 });
 
@@ -259,16 +300,11 @@ test('bloqueios apenas encostados antes ou depois do slot não conflitam', () =>
   );
 });
 
-test('horário com cinco minutos de antecedência é permitido e com menos é bloqueado', () => {
+test('horário futuro permanece disponível sem antecedência adicional', () => {
   const slots = availabilityAt({ nowUtc: new Date('2026-08-15T11:55:00.000Z') });
   assert.equal(
     slots.some((slot) => slot.inicioLocal === '09:00'),
     true,
-  );
-  const tooSoon = availabilityAt({ nowUtc: new Date('2026-08-15T11:56:00.000Z') });
-  assert.equal(
-    tooSoon.some((slot) => slot.inicioLocal === '09:00'),
-    false,
   );
 });
 

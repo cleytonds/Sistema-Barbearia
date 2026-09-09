@@ -1,5 +1,5 @@
-export const SLOT_INTERVAL_MINUTES = 15;
-export const MIN_BOOKING_NOTICE_MINUTES = 5;
+export const SLOT_INTERVAL_MINUTES = 5;
+export const MIN_BOOKING_NOTICE_MINUTES = 0;
 
 export const ACTIVE_APPOINTMENT_STATUSES = Object.freeze([
   'pendente',

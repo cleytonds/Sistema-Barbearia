@@ -14,6 +14,7 @@ import { appointmentIdValidator } from '../validators/agendamentoValidators.js';
 import {
   adminCancelValidator,
   adminListValidator,
+  createGuestAdminAppointmentValidator,
   adminRescheduleValidator,
   createAdminAppointmentValidator,
 } from '../validators/adminAgendamentoValidators.js';
@@ -41,6 +42,13 @@ adminAgendamentoRoutes.post(
   createAdminAppointmentValidator,
   validate,
   asyncHandler(controller.create),
+);
+adminAgendamentoRoutes.post(
+  '/sem-cadastro',
+  appointmentCreationLimiter,
+  createGuestAdminAppointmentValidator,
+  validate,
+  asyncHandler(controller.createGuest),
 );
 adminAgendamentoRoutes.put(
   '/:id/status',

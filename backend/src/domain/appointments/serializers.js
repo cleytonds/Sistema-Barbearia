@@ -3,6 +3,14 @@ import { DateTime } from 'luxon';
 const asId = (value) => (value == null ? null : String(value));
 const money = (value) => Number(value).toFixed(2);
 
+export function serializeAppointmentClient(row, { includePhone = false } = {}) {
+  return {
+    id: asId(row.cliente_id),
+    nome: row.cliente_nome,
+    ...(includePhone ? { telefone: row.cliente_telefone ?? null } : {}),
+  };
+}
+
 export function serializeAppointment(row, timeZone = 'UTC', { includeBarberPhone = false } = {}) {
   const start = DateTime.fromJSDate(new Date(row.inicio_em), { zone: 'utc' }).setZone(timeZone);
   const end = DateTime.fromJSDate(new Date(row.fim_em), { zone: 'utc' }).setZone(timeZone);

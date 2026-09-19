@@ -1,7 +1,7 @@
 import mysql from 'mysql2/promise';
 import { env } from './env.js';
 
-const LATEST_SCHEMA_MIGRATION = '018_create_barber_appointment_archives.sql';
+const LATEST_SCHEMA_MIGRATION = '020_add_barber_appointment_origin.sql';
 
 export const pool = mysql.createPool({
   ...env.database,

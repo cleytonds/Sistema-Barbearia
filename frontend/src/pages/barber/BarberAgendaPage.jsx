@@ -55,7 +55,20 @@ export default function BarberAgendaPage() {
   }
   return (
     <>
-      <PageHeader title="Minha agenda" description="Atendimentos organizados por horário." />
+      <PageHeader
+        title="Minha agenda"
+        description="Atendimentos organizados por horário."
+        actions={
+          <div className="cluster">
+            <Link className="button button--primary" to="/barbeiro/agendamentos/novo">
+              Agendamento com cadastro
+            </Link>
+            <Link className="button button--primary" to="/barbeiro/agendamentos/sem-cadastro">
+              Agendamento sem cadastro
+            </Link>
+          </div>
+        }
+      />
       <section className="card filter-panel">
         <div className="cluster" role="tablist" aria-label="Visualização da agenda">
           <Button

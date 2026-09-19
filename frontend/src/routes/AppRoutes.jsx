@@ -26,11 +26,18 @@ const BarberAppointmentDetailsPage = lazy(
 const BarberSchedulePage = lazy(() => import('../pages/barber/BarberSchedulePage.jsx'));
 const BarberBlocksPage = lazy(() => import('../pages/barber/BarberBlocksPage.jsx'));
 const BarberProfilePage = lazy(() => import('../pages/barber/BarberProfilePage.jsx'));
+const BarberGuestAppointmentPage = lazy(
+  () => import('../pages/barber/BarberGuestAppointmentPage.jsx'),
+);
+const BarberCreateAppointmentPage = lazy(
+  () => import('../pages/barber/BarberCreateAppointmentPage.jsx'),
+);
 const adminPage = (name) =>
   lazy(() => import('../pages/admin/AdminPages.jsx').then((module) => ({ default: module[name] })));
 const AdminDashboardPage = adminPage('AdminDashboardPage'),
   AdminAppointmentsPage = adminPage('AdminAppointmentsPage'),
   AdminCreateAppointmentPage = adminPage('AdminCreateAppointmentPage'),
+  AdminCreateGuestAppointmentPage = adminPage('AdminCreateGuestAppointmentPage'),
   AdminAppointmentDetailsPage = adminPage('AdminAppointmentDetailsPage'),
   AdminClientHistoryPage = adminPage('AdminClientHistoryPage'),
   AdminServicesPage = adminPage('AdminServicesPage'),
@@ -104,6 +111,11 @@ export function AppRoutes() {
             >
               <Route path="/barbeiro" element={<BarberDashboardPage />} />
               <Route path="/barbeiro/agenda" element={<BarberAgendaPage />} />
+              <Route path="/barbeiro/agendamentos/novo" element={<BarberCreateAppointmentPage />} />
+              <Route
+                path="/barbeiro/agendamentos/sem-cadastro"
+                element={<BarberGuestAppointmentPage />}
+              />
               <Route path="/barbeiro/agendamentos/:id" element={<BarberAppointmentDetailsPage />} />
               <Route path="/barbeiro/jornada" element={<BarberSchedulePage />} />
               <Route path="/barbeiro/bloqueios" element={<BarberBlocksPage />} />
@@ -119,6 +131,10 @@ export function AppRoutes() {
               <Route path="/admin" element={<AdminDashboardPage />} />
               <Route path="/admin/agendamentos" element={<AdminAppointmentsPage />} />
               <Route path="/admin/agendamentos/novo" element={<AdminCreateAppointmentPage />} />
+              <Route
+                path="/admin/agendamentos/sem-cadastro"
+                element={<AdminCreateGuestAppointmentPage />}
+              />
               <Route path="/admin/agendamentos/:id" element={<AdminAppointmentDetailsPage />} />
               <Route path="/admin/clientes/:id" element={<AdminClientHistoryPage />} />
               <Route path="/admin/servicos" element={<AdminServicesPage />} />

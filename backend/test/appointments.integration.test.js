@@ -330,7 +330,7 @@ test('mass assignment é rejeitado e listagens respeitam propriedade', async () 
   );
 });
 
-test('admin cria confirmado e barbeiro acessa somente o próprio agendamento', async () => {
+test('admin cria pendente, confirma explicitamente e barbeiro acessa somente o próprio agendamento', async () => {
   const response = await api('/admin/agendamentos', {
     method: 'POST',
     token: adminToken,
@@ -347,7 +347,31 @@ test('admin cria confirmado e barbeiro acessa somente o próprio agendamento', a
   assert.equal(response.status, 201);
   const created = (await response.json()).data;
   adminAppointmentId = created.id;
-  assert.equal(created.status, 'confirmado');
+  assert.equal(created.status, 'pendente');
+  const [[createdHistory]] = await pool.execute(
+    'SELECT tipo_evento,status_anterior,status_novo FROM historico_agendamentos WHERE agendamento_id=?',
+    [created.id],
+  );
+  assert.deepEqual(createdHistory, {
+    tipo_evento: 'criado',
+    status_anterior: null,
+    status_novo: 'pendente',
+  });
+  const confirmation = await api(`/admin/agendamentos/${created.id}/status`, {
+    method: 'PUT',
+    token: adminToken,
+    body: { status: 'confirmado' },
+  });
+  assert.equal(confirmation.status, 200);
+  assert.equal((await confirmation.json()).data.status, 'confirmado');
+  const [history] = await pool.execute(
+    'SELECT tipo_evento,status_anterior,status_novo FROM historico_agendamentos WHERE agendamento_id=? ORDER BY id',
+    [created.id],
+  );
+  assert.deepEqual(history, [
+    { tipo_evento: 'criado', status_anterior: null, status_novo: 'pendente' },
+    { tipo_evento: 'confirmado', status_anterior: 'pendente', status_novo: 'confirmado' },
+  ]);
   assert.equal(
     (await api(`/barbeiro/agendamentos/${created.id}`, { token: barberToken })).status,
     200,

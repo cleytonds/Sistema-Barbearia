@@ -1,7 +1,9 @@
 import { pool } from '../config/database.js';
 
 const detailSelect = `
-  SELECT a.*, ub.nome AS barbeiro_nome, ub.telefone AS barbeiro_telefone, uc.nome AS cliente_nome,
+  SELECT a.*, ub.nome AS barbeiro_nome, ub.telefone AS barbeiro_telefone,
+         COALESCE(uc.nome, a.cliente_nome_snapshot) AS cliente_nome,
+         COALESCE(uc.telefone, a.cliente_telefone_snapshot) AS cliente_telefone,
          s.nome AS servico_nome, c.fuso_horario,
          EXISTS(
            SELECT 1 FROM agendamentos_arquivados_barbeiro aa
@@ -10,7 +12,7 @@ const detailSelect = `
   FROM agendamentos a
   INNER JOIN barbeiros b ON b.id = a.barbeiro_id
   INNER JOIN usuarios ub ON ub.id = b.usuario_id
-  INNER JOIN usuarios uc ON uc.id = a.cliente_id
+  LEFT JOIN usuarios uc ON uc.id = a.cliente_id
   INNER JOIN servicos s ON s.id = a.servico_id
   INNER JOIN configuracoes c ON c.id = 1
 `;
@@ -72,15 +74,17 @@ export async function findActiveClient(id, connection = pool) {
 export async function create(data, connection) {
   const [result] = await connection.execute(
     `INSERT INTO agendamentos (
-       cliente_id, barbeiro_id, servico_id, criado_por, origem,
+       cliente_id, cliente_nome_snapshot, cliente_telefone_snapshot, barbeiro_id, servico_id, criado_por, origem,
        inicio_em, fim_em, fim_ocupacao_em, preco, duracao_minutos,
        buffer_minutos, status, observacoes_cliente, observacoes_internas,
        idempotency_key_hash, idempotency_payload_hash, tipo_cobranca,
        assinatura_plano_id, plano_id_snapshot, plano_nome_snapshot,
        cobertura_confirmada_em
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       data.clientId,
+      data.clientName ?? null,
+      data.clientPhone ?? null,
       data.barberId,
       data.serviceId,
       data.createdBy,

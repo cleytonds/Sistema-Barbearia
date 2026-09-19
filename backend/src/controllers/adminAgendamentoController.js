@@ -17,6 +17,16 @@ export async function create(request, response) {
   response.set('Idempotent-Replayed', String(result.replayed));
   response.status(result.replayed ? 200 : 201).json({ data: result.appointment });
 }
+export async function createGuest(request, response) {
+  const result = await appointmentService.createGuestAdmin({
+    userId: request.auth.usuario.id,
+    payload: request.body,
+    key: request.get(IDEMPOTENCY_KEY_HEADER),
+    requestId: request.requestId,
+  });
+  response.set('Idempotent-Replayed', String(result.replayed));
+  response.status(result.replayed ? 200 : 201).json({ data: result.appointment });
+}
 export async function list(request, response) {
   response.json(
     await queryService.listAdmin(request.query, parsePagination(request.query, sorts, 'inicio')),

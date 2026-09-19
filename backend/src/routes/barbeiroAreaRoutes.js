@@ -10,6 +10,7 @@ import * as dashboardController from '../controllers/dashboardController.js';
 
 import {
   blockListValidator,
+  clientListValidator,
   dashboardValidator,
   myBlockValidator,
 } from '../validators/operacionalValidators.js';
@@ -24,6 +25,12 @@ barbeiroAreaRoutes.use(auth(), requireBarbeiro());
 
 // Perfil profissional
 barbeiroAreaRoutes.get('/me', asyncHandler(barbeiroController.me));
+barbeiroAreaRoutes.get(
+  '/clientes',
+  clientListValidator,
+  validate,
+  asyncHandler(barbeiroController.clients),
+);
 barbeiroAreaRoutes.put(
   '/me',
   updateOwnBarberValidator,

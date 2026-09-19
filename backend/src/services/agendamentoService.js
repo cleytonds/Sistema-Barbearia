@@ -43,6 +43,7 @@ async function createTransactional({
   nowUtc,
   requestId,
   clientBooking = false,
+  guestClient = null,
 }) {
   const startedAt = Date.now();
   const idempotency = buildIdempotency({
@@ -71,15 +72,18 @@ async function createTransactional({
       logContext,
       operation: async ({ connection, transactionContext }) => {
         await availabilityRepository.lockBarber(payload.barbeiroId, connection);
-        const client = await appointmentRepository.findActiveClient(clientId, connection);
-        if (!client) throw new AppError('Cliente não encontrado.', 404, 'CLIENT_NOT_FOUND');
-        const coverage = await decidirCobertura({
-          clienteId: clientId,
-          servicoId: payload.servicoId,
-          barbeiroId: payload.barbeiroId,
-          data: payload.data,
-          connection,
-        });
+        let coverage = { tipoCobranca: 'avulso' };
+        if (!guestClient) {
+          const client = await appointmentRepository.findActiveClient(clientId, connection);
+          if (!client) throw new AppError('Cliente não encontrado.', 404, 'CLIENT_NOT_FOUND');
+          coverage = await decidirCobertura({
+            clienteId: clientId,
+            servicoId: payload.servicoId,
+            barbeiroId: payload.barbeiroId,
+            data: payload.data,
+            connection,
+          });
+        }
         const availability = await validateAvailability({
           barbeiroId: payload.barbeiroId,
           servicoId: payload.servicoId,
@@ -97,6 +101,8 @@ async function createTransactional({
         const appointmentId = await appointmentRepository.create(
           {
             clientId,
+            clientName: guestClient?.name,
+            clientPhone: guestClient?.phone,
             barberId: payload.barbeiroId,
             serviceId: payload.servicoId,
             createdBy: actorId,
@@ -104,7 +110,7 @@ async function createTransactional({
             status,
             snapshot,
             clientNotes: payload.observacoes,
-            internalNotes: payload.observacoesInternas,
+            internalNotes: payload.observacoesInternas ?? payload.observacao,
             keyHash: idempotency.keyHash,
             payloadHash: idempotency.payloadHash,
             billingType: coverage.tipoCobranca,
@@ -189,8 +195,60 @@ export function createAdmin({ userId, payload, key, nowUtc = new Date(), request
     actorId: userId,
     clientId: payload.clienteId,
     origin: APPOINTMENT_ORIGIN.ADMIN,
-    status: APPOINTMENT_STATUS.CONFIRMED,
+    status: APPOINTMENT_STATUS.PENDING,
     payload,
+    key,
+    nowUtc,
+    requestId,
+  });
+}
+
+function guestClientFromPayload(payload) {
+  return {
+    name: payload.clienteNome.trim(),
+    phone: payload.clienteTelefone?.trim() || null,
+  };
+}
+
+export function createGuestAdmin({ userId, payload, key, nowUtc = new Date(), requestId }) {
+  return createTransactional({
+    actorId: userId,
+    clientId: null,
+    origin: APPOINTMENT_ORIGIN.ADMIN,
+    status: APPOINTMENT_STATUS.PENDING,
+    payload,
+    key,
+    nowUtc,
+    requestId,
+    guestClient: guestClientFromPayload(payload),
+  });
+}
+
+export async function createGuestBarber({ userId, payload, key, nowUtc = new Date(), requestId }) {
+  const barber = await appointmentRepository.findBarberByUser(userId);
+  if (!barber?.ativo) throw new AppError('Barbeiro nÃ£o encontrado.', 404, 'BARBER_NOT_FOUND');
+  return createTransactional({
+    actorId: userId,
+    clientId: null,
+    origin: APPOINTMENT_ORIGIN.BARBER,
+    status: APPOINTMENT_STATUS.PENDING,
+    payload: { ...payload, barbeiroId: barber.id },
+    key,
+    nowUtc,
+    requestId,
+    guestClient: guestClientFromPayload(payload),
+  });
+}
+
+export async function createBarber({ userId, payload, key, nowUtc = new Date(), requestId }) {
+  const barber = await appointmentRepository.findBarberByUser(userId);
+  if (!barber?.ativo) throw new AppError('Barbeiro não encontrado.', 404, 'BARBER_NOT_FOUND');
+  return createTransactional({
+    actorId: userId,
+    clientId: payload.clienteId,
+    origin: APPOINTMENT_ORIGIN.BARBER,
+    status: APPOINTMENT_STATUS.PENDING,
+    payload: { ...payload, barbeiroId: barber.id },
     key,
     nowUtc,
     requestId,

@@ -1,7 +1,7 @@
 import { AppError } from '../../utils/AppError.js';
 
 export function assertClientOwner(appointment, userId) {
-  if (String(appointment.cliente_id) !== String(userId)) {
+  if (appointment.cliente_id == null || String(appointment.cliente_id) !== String(userId)) {
     throw new AppError('Acesso não autorizado.', 403, 'APPOINTMENT_FORBIDDEN');
   }
 }

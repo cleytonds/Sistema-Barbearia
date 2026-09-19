@@ -7,7 +7,11 @@ export const APPOINTMENT_STATUS = Object.freeze({
   ABSENT: 'ausente',
 });
 
-export const APPOINTMENT_ORIGIN = Object.freeze({ CLIENT: 'cliente', ADMIN: 'admin' });
+export const APPOINTMENT_ORIGIN = Object.freeze({
+  CLIENT: 'cliente',
+  ADMIN: 'admin',
+  BARBER: 'barbeiro',
+});
 export const TERMINAL_STATUSES = Object.freeze([
   APPOINTMENT_STATUS.COMPLETED,
   APPOINTMENT_STATUS.CANCELLED,

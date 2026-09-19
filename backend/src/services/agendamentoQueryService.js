@@ -1,6 +1,9 @@
 import { DateTime } from 'luxon';
 import { assertAssignedBarber, assertClientOwner } from '../domain/appointments/permissions.js';
-import { serializeAppointment } from '../domain/appointments/serializers.js';
+import {
+  serializeAppointment,
+  serializeAppointmentClient,
+} from '../domain/appointments/serializers.js';
 import { clientAppointmentPermissions } from '../domain/appointments/clientPermissions.js';
 import * as appointmentRepository from '../repositories/agendamentoRepository.js';
 import * as historyRepository from '../repositories/historicoAgendamentoRepository.js';
@@ -33,11 +36,11 @@ function filtersForQuery(query, timeZone, nowUtc = new Date()) {
 
 function serializeForRole(row, role, settings) {
   const serialized = serializeAppointment(row, row.fuso_horario);
-  if (role === 'barbeiro') return { ...serialized, cliente: { nome: row.cliente_nome } };
+  if (role === 'barbeiro') return { ...serialized, cliente: serializeAppointmentClient(row) };
   if (role === 'admin') {
     return {
       ...serialized,
-      cliente: { id: String(row.cliente_id), nome: row.cliente_nome },
+      cliente: serializeAppointmentClient(row),
       origem: row.origem,
     };
   }
@@ -101,14 +104,14 @@ export async function detail({ id, userId, role }) {
   if (role === 'barbeiro') {
     return {
       ...serialized,
-      cliente: { nome: appointment.cliente_nome },
+      cliente: serializeAppointmentClient(appointment),
       arquivado: Boolean(appointment.arquivado_barbeiro),
     };
   }
   if (role === 'admin') {
     return {
       ...serialized,
-      cliente: { id: String(appointment.cliente_id), nome: appointment.cliente_nome },
+      cliente: serializeAppointmentClient(appointment),
       origem: appointment.origem,
       criadoPor: String(appointment.criado_por),
       observacoesInternas: appointment.observacoes_internas,

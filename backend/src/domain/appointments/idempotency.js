@@ -22,7 +22,11 @@ export function buildIdempotency({ key, operation, actorId, clientId, payload })
     serviceId: String(payload.servicoId),
     date: payload.data,
     time: payload.horaInicio,
-    observations: String(payload.observacoes ?? payload.observacoesInternas ?? '').trim(),
+    observations: String(
+      payload.observacoes ?? payload.observacoesInternas ?? payload.observacao ?? '',
+    ).trim(),
+    clientName: String(payload.clienteNome ?? '').trim(),
+    clientPhone: String(payload.clienteTelefone ?? '').trim(),
   });
   return { keyHash: hash(key), payloadHash: hash(canonical) };
 }

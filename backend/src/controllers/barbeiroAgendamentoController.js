@@ -1,9 +1,31 @@
 import * as queryService from '../services/agendamentoQueryService.js';
 import * as statusService from '../services/agendamentoStatusService.js';
 import * as archiveService from '../services/agendamentoArquivoService.js';
+import * as appointmentService from '../services/agendamentoService.js';
+import { IDEMPOTENCY_KEY_HEADER } from '../config/httpConfig.js';
 import { parsePagination } from '../utils/pagination.js';
 
 const sorts = { inicio: 'a.inicio_em', criadoEm: 'a.criado_em', status: 'a.status' };
+export async function createGuest(request, response) {
+  const result = await appointmentService.createGuestBarber({
+    userId: request.auth.usuario.id,
+    payload: request.body,
+    key: request.get(IDEMPOTENCY_KEY_HEADER),
+    requestId: request.requestId,
+  });
+  response.set('Idempotent-Replayed', String(result.replayed));
+  response.status(result.replayed ? 200 : 201).json({ data: result.appointment });
+}
+export async function create(request, response) {
+  const result = await appointmentService.createBarber({
+    userId: request.auth.usuario.id,
+    payload: request.body,
+    key: request.get(IDEMPOTENCY_KEY_HEADER),
+    requestId: request.requestId,
+  });
+  response.set('Idempotent-Replayed', String(result.replayed));
+  response.status(result.replayed ? 200 : 201).json({ data: result.appointment });
+}
 export async function list(request, response) {
   response.json(
     await queryService.listBarber(

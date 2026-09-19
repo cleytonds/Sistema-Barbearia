@@ -5,10 +5,16 @@ export const adminService = {
   appointment: async (id) => (await api.get(`/admin/agendamentos/${id}`)).data,
   createAppointment: async (data, key) =>
     (await api.post('/admin/agendamentos', data, { headers: { 'Idempotency-Key': key } })).data,
+  createGuestAppointment: async (data, key) =>
+    (
+      await api.post('/admin/agendamentos/sem-cadastro', data, {
+        headers: { 'Idempotency-Key': key },
+      })
+    ).data,
   appointmentStatus: async (id, status, justificativa) =>
     (await api.put(`/admin/agendamentos/${id}/status`, { status, justificativa })).data,
-  cancelAppointment: async (id, motivo) =>
-    (await api.put(`/admin/agendamentos/${id}/cancelar`, { motivo })).data,
+  cancelAppointment: async (id, motivo, responsabilidade) =>
+    (await api.put(`/admin/agendamentos/${id}/cancelar`, { motivo, responsabilidade })).data,
   rescheduleAppointment: async (id, data) =>
     (await api.put(`/admin/agendamentos/${id}/reagendar`, data)).data,
   clients: async (params) => (await api.get('/admin/clientes', { params })).data,

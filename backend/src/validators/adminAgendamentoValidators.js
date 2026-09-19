@@ -23,6 +23,28 @@ export const createAdminAppointmentValidator = [
     .trim()
     .isLength({ max: CLIENT_NOTES_MAX_LENGTH }),
 ];
+export const createGuestAdminAppointmentValidator = [
+  strict([
+    'clienteNome',
+    'clienteTelefone',
+    'barbeiroId',
+    'servicoId',
+    'data',
+    'horaInicio',
+    'observacao',
+  ]),
+  body('clienteNome').isString().trim().isLength({ min: 1, max: 150 }),
+  body('clienteTelefone').optional({ nullable: true }).isString().trim().isLength({ max: 20 }),
+  body('barbeiroId').isInt({ min: 1 }).toInt(),
+  body('servicoId').isInt({ min: 1 }).toInt(),
+  body('data').matches(/^\d{4}-\d{2}-\d{2}$/),
+  body('horaInicio').matches(/^(?:[01]\d|2[0-3]):[0-5]\d$/),
+  body('observacao')
+    .optional({ nullable: true })
+    .isString()
+    .trim()
+    .isLength({ max: CLIENT_NOTES_MAX_LENGTH }),
+];
 export const adminCancelValidator = [
   ...appointmentIdValidator,
   strict(['motivo', 'responsabilidade']),

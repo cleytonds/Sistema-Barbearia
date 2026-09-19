@@ -14,6 +14,15 @@ export const operacionalService = {
     (await api.get('/barbeiro/agendamentos', { params, signal })).data,
   barberAppointment: async (id, signal) =>
     (await api.get(`/barbeiro/agendamentos/${id}`, { signal })).data,
+  createGuestAppointment: async (data, key) =>
+    (
+      await api.post('/barbeiro/agendamentos/sem-cadastro', data, {
+        headers: { 'Idempotency-Key': key },
+      })
+    ).data,
+  createAppointment: async (data, key) =>
+    (await api.post('/barbeiro/agendamentos', data, { headers: { 'Idempotency-Key': key } })).data,
+  clients: async (params) => (await api.get('/barbeiro/clientes', { params })).data,
   updateAppointmentStatus: async (id, status, justificativa) =>
     (await api.put(`/barbeiro/agendamentos/${id}/status`, { status, justificativa })).data,
   archiveAppointment: async (id) => api.put(`/barbeiro/agendamentos/${id}/arquivar`),

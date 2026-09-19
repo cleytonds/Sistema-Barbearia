@@ -21,6 +21,7 @@ import { servicoService } from '../../services/servicoService.js';
 import { barbeiroService } from '../../services/barbeiroService.js';
 import { operacionalService } from '../../services/operacionalService.js';
 import { getDisponibilidade } from '../../services/disponibilidadeService.js';
+import { GuestAppointmentForm } from '../../components/appointments/GuestAppointmentForm.jsx';
 import { createInitialBlockPeriod } from '../../utils/blockDateTime.js';
 import { subscriptionStatus, usoStatus } from '../../utils/planStatus.js';
 const today = () => new Date().toISOString().slice(0, 10);
@@ -100,9 +101,14 @@ export function AdminAppointmentsPage() {
       <PageHeader
         title="Agendamentos"
         actions={
-          <Link className="button button--primary" to="/admin/agendamentos/novo">
-            Criar
-          </Link>
+          <div className="cluster">
+            <Link className="button button--primary" to="/admin/agendamentos/novo">
+              Agendamento com cadastro
+            </Link>
+            <Link className="button button--primary" to="/admin/agendamentos/sem-cadastro">
+              Agendamento sem cadastro
+            </Link>
+          </div>
         }
       />
       <section className="card filter-panel">
@@ -167,20 +173,27 @@ export function AdminAppointmentDetailsPage() {
     state = useRemoteData(() => adminService.appointment(id), [id]);
   const [dialog, setDialog] = useState(null),
     [value, setValue] = useState(''),
+    [responsibility, setResponsibility] = useState(''),
     [error, setError] = useState('');
   const item = state.data?.data;
   async function act() {
     try {
-      if (dialog === 'cancel') await adminService.cancelAppointment(id, value);
+      if (dialog === 'cancel') await adminService.cancelAppointment(id, value, responsibility);
       else if (dialog === 'reschedule') {
         const [data, horaInicio] = value.split('T');
         await adminService.rescheduleAppointment(id, { data, horaInicio });
       } else await adminService.appointmentStatus(id, dialog);
       setDialog(null);
       setValue('');
+      setResponsibility('');
       state.reload();
     } catch (e) {
-      setError(msg(e));
+      const fieldErrors = extractFieldErrors(e);
+      setError(
+        dialog === 'cancel'
+          ? (fieldErrors.motivo ?? fieldErrors.responsabilidade ?? msg(e))
+          : msg(e),
+      );
     }
   }
   return (
@@ -210,7 +223,15 @@ export function AdminAppointmentDetailsPage() {
             <Button variant="secondary" onClick={() => setDialog('reschedule')}>
               Reagendar
             </Button>
-            <Button variant="danger" onClick={() => setDialog('cancel')}>
+            <Button
+              variant="danger"
+              onClick={() => {
+                setDialog('cancel');
+                setValue('');
+                setResponsibility('');
+                setError('');
+              }}
+            >
               Cancelar
             </Button>
           </div>
@@ -226,7 +247,41 @@ export function AdminAppointmentDetailsPage() {
       )}
       <Dialog open={Boolean(dialog)} onClose={() => setDialog(null)} title="Confirmar operação">
         {dialog === 'cancel' && (
-          <Input label="Motivo" value={value} onChange={(e) => setValue(e.target.value)} />
+          <>
+            <Input
+              label="Motivo"
+              value={value}
+              minLength={3}
+              maxLength={500}
+              required
+              onChange={(e) => setValue(e.target.value)}
+            />
+            <div className="field">
+              <span className="field__label">Responsabilidade *</span>
+              <div className="cluster" role="radiogroup" aria-label="Responsabilidade">
+                <label>
+                  <input
+                    type="radio"
+                    name="responsabilidade"
+                    value="cliente"
+                    checked={responsibility === 'cliente'}
+                    onChange={(e) => setResponsibility(e.target.value)}
+                  />{' '}
+                  Cliente
+                </label>
+                <label>
+                  <input
+                    type="radio"
+                    name="responsabilidade"
+                    value="barbearia"
+                    checked={responsibility === 'barbearia'}
+                    onChange={(e) => setResponsibility(e.target.value)}
+                  />{' '}
+                  Barbearia
+                </label>
+              </div>
+            </div>
+          </>
         )}{' '}
         {dialog === 'reschedule' && (
           <Input
@@ -237,7 +292,12 @@ export function AdminAppointmentDetailsPage() {
           />
         )}{' '}
         {error && <Alert type="error">{error}</Alert>}
-        <Button onClick={act}>Confirmar</Button>
+        <Button
+          onClick={act}
+          disabled={dialog === 'cancel' && (value.trim().length < 3 || !responsibility)}
+        >
+          Confirmar
+        </Button>
       </Dialog>
     </>
   );
@@ -406,6 +466,16 @@ export function AdminCreateAppointmentPage() {
           Criar agendamento
         </Button>
       </form>
+    </>
+  );
+}
+
+export function AdminCreateGuestAppointmentPage() {
+  useDocumentTitle('Agendamento sem cadastro');
+  return (
+    <>
+      <PageHeader title="Agendamento sem cadastro" />
+      <GuestAppointmentForm role="admin" />
     </>
   );
 }

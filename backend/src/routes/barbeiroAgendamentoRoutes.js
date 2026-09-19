@@ -2,12 +2,18 @@ import { Router } from 'express';
 import * as controller from '../controllers/barbeiroAgendamentoController.js';
 import { auth } from '../middlewares/auth.js';
 import { requireBarbeiro } from '../middlewares/authorize.js';
-import { appointmentReadLimiter, appointmentStatusLimiter } from '../middlewares/rateLimiters.js';
+import {
+  appointmentCreationLimiter,
+  appointmentReadLimiter,
+  appointmentStatusLimiter,
+} from '../middlewares/rateLimiters.js';
 import { validate } from '../middlewares/validate.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { appointmentIdValidator } from '../validators/agendamentoValidators.js';
 import {
   barberListValidator,
+  createBarberAppointmentValidator,
+  createGuestBarberAppointmentValidator,
   statusValidator,
 } from '../validators/barbeiroAgendamentoValidators.js';
 
@@ -19,6 +25,20 @@ barbeiroAgendamentoRoutes.get(
   barberListValidator,
   validate,
   asyncHandler(controller.list),
+);
+barbeiroAgendamentoRoutes.post(
+  '/',
+  appointmentCreationLimiter,
+  createBarberAppointmentValidator,
+  validate,
+  asyncHandler(controller.create),
+);
+barbeiroAgendamentoRoutes.post(
+  '/sem-cadastro',
+  appointmentCreationLimiter,
+  createGuestBarberAppointmentValidator,
+  validate,
+  asyncHandler(controller.createGuest),
 );
 barbeiroAgendamentoRoutes.get(
   '/:id',

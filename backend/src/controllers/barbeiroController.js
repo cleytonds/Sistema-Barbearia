@@ -1,4 +1,5 @@
 import * as barbeiroService from '../services/barbeiroService.js';
+import * as clienteAdminService from '../services/clienteAdminService.js';
 
 export const listPublic = async (request, response) =>
   response.json(await barbeiroService.list(request.query, true));
@@ -46,4 +47,12 @@ export const updateMe = async (request, response) =>
 export const myServices = async (request, response) => {
   const barber = await barbeiroService.me(request.auth.usuario.id);
   response.json({ data: await barbeiroService.services(barber.id) });
+};
+
+export const clients = async (request, response) => {
+  const result = await clienteAdminService.list(request.query);
+  response.json({
+    ...result,
+    data: result.data.map(({ id, nome }) => ({ id, nome })),
+  });
 };

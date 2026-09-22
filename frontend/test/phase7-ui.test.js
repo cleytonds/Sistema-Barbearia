@@ -193,6 +193,27 @@ test('Header autenticado preserva Conta e Sair sem opções de visitante no menu
   assert.equal(mobileMenu.queryByRole('link', { name: 'Entrar' }), null);
   assert.equal(mobileMenu.queryByRole('link', { name: 'Criar conta' }), null);
 });
+test('Header não trata cliente com papel barbeiro como cliente exclusivo', async () => {
+  const user = userEvent.setup({ document });
+  render(
+    wrapper(React.createElement(Header), {
+      loading: false,
+      isAuthenticated: true,
+      usuario: { perfil: 'cliente', papeis: ['cliente', 'barbeiro'] },
+      logout() {},
+    }),
+  );
+
+  assert.equal(screen.queryByRole('link', { name: 'Meus agendamentos' }), null);
+  assert.equal(screen.getByRole('link', { name: 'Conta' }).getAttribute('href'), '/barbeiro');
+  await user.click(screen.getByRole('button', { name: 'Abrir menu' }));
+  assert.equal(
+    within(screen.getByRole('dialog', { name: 'Menu principal' }))
+      .getByRole('link', { name: 'Conta' })
+      .getAttribute('href'),
+    '/barbeiro',
+  );
+});
 test('Footer consome serviços reais, mantém contato oficial e omite endereço ausente', async () => {
   operacionalService.publicConfig = async () => ({ data: { telefone: null, endereco: null } });
   operacionalService.publicHours = async () => ({ data: [] });

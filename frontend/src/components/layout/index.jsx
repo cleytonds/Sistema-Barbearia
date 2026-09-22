@@ -4,6 +4,7 @@ import { BrandMark } from '../brand/BrandMark.jsx';
 import { Button } from '../ui/index.jsx';
 import { useAuth } from '../../hooks/useAuth.js';
 import { useRemoteData } from '../../hooks/useRemoteData.js';
+import { defaultRouteForUser, normalizeRoles } from '../../routes/routeSecurity.js';
 import { operacionalService } from '../../services/operacionalService.js';
 import { servicoService } from '../../services/servicoService.js';
 import { ClockIcon, InstagramIcon, LocationIcon, MenuIcon, PhoneIcon } from '../ui/Icons.jsx';
@@ -41,14 +42,14 @@ function Navigation({ isClient = false, onNavigate }) {
     </nav>
   );
 }
-export function MobileMenu({ isAuthenticated, isClient, onClose, onLogout, open }) {
+export function MobileMenu({ accountPath, isAuthenticated, isClient, onClose, onLogout, open }) {
   return open ? (
     <div className="mobile-menu" id="mobile-navigation" role="dialog" aria-label="Menu principal">
       <Navigation isClient={isClient} onNavigate={onClose} />
       <div className="mobile-menu__account">
         {isAuthenticated ? (
           <>
-            <Link to={isClient ? '/meus-agendamentos' : '/'} onClick={onClose}>
+            <Link to={accountPath} onClick={onClose}>
               Conta
             </Link>
             <button type="button" onClick={onLogout}>
@@ -73,7 +74,10 @@ export function Header() {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuTriggerRef = useRef(null);
   const { isAuthenticated, usuario, logout } = useAuth();
-  const isClient = usuario?.perfil === 'cliente';
+  const roles = normalizeRoles(usuario);
+  const isClient =
+    roles.includes('cliente') && !roles.includes('barbeiro') && !roles.includes('admin');
+  const accountPath = defaultRouteForUser(usuario);
   useEffect(() => {
     if (!menuOpen) return undefined;
     const closeOnEscape = (event) => {
@@ -113,7 +117,7 @@ export function Header() {
         <div className="header-actions">
           {isAuthenticated ? (
             <>
-              <Link to={isClient ? '/meus-agendamentos' : '/'}>Conta</Link>
+              <Link to={accountPath}>Conta</Link>
               <Button variant="secondary" onClick={logout}>
                 Sair
               </Button>
@@ -130,6 +134,7 @@ export function Header() {
       </Container>
       <Container>
         <MobileMenu
+          accountPath={accountPath}
           isAuthenticated={isAuthenticated}
           isClient={isClient}
           open={menuOpen}
